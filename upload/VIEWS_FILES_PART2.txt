@@ -1,0 +1,523 @@
+═════════════════════════════════════════════════════════════════════════════════
+  CONSOLIDATED VIEWS FILES - PART 2
+  Fichiers onglets courts du dossier : admin_dashboard/views/
+═════════════════════════════════════════════════════════════════════════════════
+
+-------tab_admin.py-----------
+"""
+Onglet Admin — gestion des clients Supabase.
+"""
+from __future__ import annotations
+import threading
+import tkinter as tk
+from tkinter import messagebox
+import customtkinter as ctk
+import sys, os
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from config import (
+    COLOR_BG, COLOR_PANEL, COLOR_CARD, COLOR_ACCENT,
+    COLOR_SUCCESS, COLOR_ERROR, COLOR_TEXT, COLOR_SUBTEXT,
+)
+from services.admin_service import get_all_clients
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+class TabAdmin(ctk.CTkFrame):
+    def __init__(self, parent):
+        super().__init__(parent, fg_color=COLOR_BG)
+        self._clients: list[dict] = []
+        self._filtered: list[dict] = []
+        self._search_var = tk.StringVar()
+        self._search_var.trace_add("write", lambda *_: self._apply_filter())
+        self._build_ui()
+        self.refresh()
+
+    # ─── UI ──────────────────────────────────────────────────────────────────
+
+    def _build_ui(self):
+        # ── En-tête ──
+        header = ctk.CTkFrame(self, fg_color="transparent")
+        header.pack(fill="x", padx=20, pady=(16, 8))
+
+        ctk.CTkLabel(
+            header, text="👥  Gestion des clients",
+            font=ctk.CTkFont(size=20, weight="bold"),
+            text_color=COLOR_ACCENT,
+        ).pack(side="left")
+
+        ctk.CTkButton(
+            header, text="⟳  Actualiser", width=110,
+            fg_color=COLOR_PANEL, hover_color=COLOR_CARD,
+            font=ctk.CTkFont(size=12),
+            command=self.refresh,
+        ).pack(side="right")
+
+        # ── Stats ──
+        self._stats_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self._stats_frame.pack(fill="x", padx=20, pady=(0, 12))
+
+        self._lbl_total   = self._stat_card("Total",    "—", "#4a90d9")
+        self._lbl_premium = self._stat_card("Premium",  "—", COLOR_ACCENT)
+        self._lbl_free    = self._stat_card("Gratuit",  "—", "#9e9e9e")
+        self._lbl_active  = self._stat_card("Confirmés","—", COLOR_SUCCESS)
+
+        # ── Recherche ──
+        search_row = ctk.CTkFrame(self, fg_color="transparent")
+        search_row.pack(fill="x", padx=20, pady=(0, 10))
+
+        ctk.CTkEntry(
+            search_row,
+            textvariable=self._search_var,
+            placeholder_text="🔍  Rechercher par nom ou email…",
+            width=340, height=36,
+            fg_color=COLOR_PANEL, border_color=COLOR_CARD,
+        ).pack(side="left")
+
+        # ── Tableau ──
+        table_frame = ctk.CTkFrame(self, fg_color=COLOR_PANEL, corner_radius=12)
+        table_frame.pack(fill="both", expand=True, padx=20, pady=(0, 16))
+
+        # En-tête colonnes
+        cols = [("Nom / Email", 280), ("Plan", 100), ("Confirmé", 90),
+                ("Inscrit le", 110), ("Dernière connexion", 140)]
+        header_row = ctk.CTkFrame(table_frame, fg_color=COLOR_CARD, height=36, corner_radius=8)
+        header_row.pack(fill="x", padx=8, pady=(8, 4))
+        header_row.pack_propagate(False)
+        for (text, w) in cols:
+            ctk.CTkLabel(
+                header_row, text=text, width=w,
+                font=ctk.CTkFont(size=12, weight="bold"),
+                text_color=COLOR_ACCENT, anchor="w",
+            ).pack(side="left", padx=8)
+
+        # Zone scrollable
+        self._scroll = ctk.CTkScrollableFrame(
+            table_frame, fg_color="transparent", corner_radius=0,
+        )
+        self._scroll.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+
+        # Status bar
+        self._status = ctk.CTkLabel(
+            self, text="Chargement…",
+            font=ctk.CTkFont(size=11), text_color=COLOR_SUBTEXT,
+        )
+        self._status.pack(pady=(0, 8))
+
+    def _stat_card(self, label: str, value: str, color: str) -> ctk.CTkLabel:
+        card = ctk.CTkFrame(self._stats_frame, fg_color=COLOR_PANEL, corner_radius=10)
+        card.pack(side="left", padx=(0, 12), pady=4)
+        ctk.CTkLabel(card, text=label, font=ctk.CTkFont(size=11),
+                     text_color=COLOR_SUBTEXT).pack(padx=16, pady=(8, 0))
+        lbl = ctk.CTkLabel(card, text=value, font=ctk.CTkFont(size=22, weight="bold"),
+                           text_color=color)
+        lbl.pack(padx=16, pady=(0, 8))
+        return lbl
+
+    # ─── Données ─────────────────────────────────────────────────────────────
+
+    def refresh(self):
+        self._status.configure(text="Chargement des clients…")
+        threading.Thread(target=self._load, daemon=True).start()
+
+    def _load(self):
+        clients = get_all_clients()
+        self.after(0, lambda: self._on_loaded(clients))
+
+    def _on_loaded(self, clients: list[dict]):
+        self._clients = clients
+        # Stats
+        total   = len(clients)
+        premium = sum(1 for c in clients if c.get("plan") == "premium")
+        free    = total - premium
+        active  = sum(1 for c in clients if c.get("confirmed"))
+        self._lbl_total.configure(text=str(total))
+        self._lbl_premium.configure(text=str(premium))
+        self._lbl_free.configure(text=str(free))
+        self._lbl_active.configure(text=str(active))
+        self._status.configure(text=f"{total} client(s) chargé(s)")
+        self._apply_filter()
+
+    def _apply_filter(self):
+        q = self._search_var.get().lower()
+        self._filtered = [
+            c for c in self._clients
+            if q in c.get("email", "").lower() or q in c.get("name", "").lower()
+        ] if q else list(self._clients)
+        self._render_rows()
+
+    def _render_rows(self):
+        for w in self._scroll.winfo_children():
+            w.destroy()
+
+        if not self._filtered:
+            ctk.CTkLabel(
+                self._scroll, text="Aucun client trouvé",
+                text_color=COLOR_SUBTEXT, font=ctk.CTkFont(size=13),
+            ).pack(pady=40)
+            return
+
+        for i, c in enumerate(self._filtered):
+            bg = COLOR_CARD if i % 2 == 0 else COLOR_PANEL
+            row = ctk.CTkFrame(self._scroll, fg_color=bg, height=40, corner_radius=6)
+            row.pack(fill="x", pady=2)
+            row.pack_propagate(False)
+
+            name  = c.get("name") or c.get("email", "—")
+            email = c.get("email", "")
+            plan  = c.get("plan", "gratuit")
+            confirmed = "✅" if c.get("confirmed") else "❌"
+            created   = c.get("created_at", "—")
+            last_in   = c.get("last_sign_in", "—")
+
+            plan_color = COLOR_ACCENT if plan == "premium" else COLOR_SUBTEXT
+
+            for (text, w, col) in [
+                (f"{name}\n{email}", 280, COLOR_TEXT),
+                (plan.upper(),       100, plan_color),
+                (confirmed,          90,  COLOR_TEXT),
+                (created,            110, COLOR_SUBTEXT),
+                (last_in,            140, COLOR_SUBTEXT),
+            ]:
+                ctk.CTkLabel(
+                    row, text=text, width=w, anchor="w",
+                    font=ctk.CTkFont(size=11), text_color=col,
+                ).pack(side="left", padx=8)
+
+-------tab_categories.py-----------
+"""
+Onglet "Catégories" — CRUD complet sur plans.categories.
+"""
+from __future__ import annotations
+import threading
+import uuid
+import tkinter as tk
+from tkinter import messagebox
+import customtkinter as ctk
+import sys
+import os
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from config import (
+    COLOR_BG, COLOR_PANEL, COLOR_CARD, COLOR_ACCENT,
+    COLOR_SUCCESS, COLOR_ERROR, COLOR_TEXT, COLOR_SUBTEXT,
+)
+from services.projects_service import (
+    get_categories, create_category, update_category, delete_category,
+)
+from slugify import slugify
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+class TabCategories(ctk.CTkFrame):
+    def __init__(self, parent):
+        super().__init__(parent, fg_color=COLOR_BG)
+        self._categories: list[dict] = []
+        self._build_layout()
+        self.refresh()
+
+    # ─── Layout ──────────────────────────────────────────────────────────────
+
+    def _build_layout(self):
+        # En-tête
+        header = ctk.CTkFrame(self, fg_color="transparent")
+        header.pack(fill="x", padx=20, pady=(16, 4))
+
+        ctk.CTkLabel(
+            header,
+            text="Gestion des catégories",
+            font=ctk.CTkFont(size=20, weight="bold"),
+            text_color=COLOR_ACCENT,
+        ).pack(side="left")
+
+        ctk.CTkButton(
+            header,
+            text="⟳  Actualiser",
+            fg_color=COLOR_PANEL,
+            hover_color=COLOR_CARD,
+            text_color=COLOR_TEXT,
+            height=32,
+            width=120,
+            command=self.refresh,
+        ).pack(side="right")
+
+        # Status
+        self._status_var = tk.StringVar(value="")
+        ctk.CTkLabel(
+            self,
+            textvariable=self._status_var,
+            font=ctk.CTkFont(size=12),
+            text_color=COLOR_SUBTEXT,
+        ).pack(anchor="w", padx=20)
+
+        # Corps : liste à gauche, formulaire à droite
+        body = ctk.CTkFrame(self, fg_color="transparent")
+        body.pack(fill="both", expand=True, padx=20, pady=8)
+
+        # ── Liste ──
+        left = ctk.CTkFrame(body, fg_color=COLOR_PANEL, corner_radius=10, width=460)
+        left.pack(side="left", fill="y", padx=(0, 10))
+        left.pack_propagate(False)
+
+        ctk.CTkLabel(
+            left,
+            text="Catégories existantes",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color=COLOR_ACCENT,
+        ).pack(anchor="w", padx=14, pady=(10, 4))
+
+        ctk.CTkFrame(left, height=1, fg_color=COLOR_CARD).pack(fill="x", padx=14, pady=(0, 6))
+
+        # En-tête colonnes
+        cols = ctk.CTkFrame(left, fg_color="transparent")
+        cols.pack(fill="x", padx=14)
+        for text, w in [("Ordre", 50), ("Slug", 130), ("Label", 140), ("", 90)]:
+            ctk.CTkLabel(
+                cols, text=text, width=w,
+                text_color=COLOR_SUBTEXT, font=ctk.CTkFont(size=11),
+                anchor="w",
+            ).pack(side="left")
+
+        self._list_scroll = ctk.CTkScrollableFrame(
+            left, fg_color="transparent", corner_radius=0
+        )
+        self._list_scroll.pack(fill="both", expand=True, padx=8, pady=4)
+
+        # ── Formulaire ajout ──
+        right = ctk.CTkFrame(body, fg_color=COLOR_PANEL, corner_radius=10)
+        right.pack(side="left", fill="both", expand=True)
+
+        ctk.CTkLabel(
+            right,
+            text="Ajouter une catégorie",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color=COLOR_ACCENT,
+        ).pack(anchor="w", padx=14, pady=(10, 4))
+
+        ctk.CTkFrame(right, height=1, fg_color=COLOR_CARD).pack(fill="x", padx=14, pady=(0, 10))
+
+        form = ctk.CTkFrame(right, fg_color="transparent")
+        form.pack(fill="x", padx=14)
+
+        self._new_label = self._form_field(form, "Label *", "ex: Villas R+1")
+        self._new_slug  = self._form_field(form, "Slug",    "auto-généré depuis le label")
+        self._new_order = self._form_field(form, "Ordre",   "10")
+
+        ctk.CTkButton(
+            right,
+            text="✚  Ajouter la catégorie",
+            fg_color=COLOR_ACCENT,
+            hover_color="#b8963e",
+            text_color="#000",
+            font=ctk.CTkFont(weight="bold"),
+            height=38,
+            command=self._add_category,
+        ).pack(anchor="w", padx=14, pady=14)
+
+    # ─── Chargement ──────────────────────────────────────────────────────────
+
+    def refresh(self):
+        self._set_status("Chargement…", COLOR_SUBTEXT)
+
+        def _load():
+            try:
+                cats = get_categories()
+                self._categories = cats
+                self.after(0, self._render_list)
+                self.after(0, lambda: self._set_status(
+                    f"{len(cats)} catégorie(s) chargée(s)", COLOR_SUCCESS
+                ))
+            except Exception as e:
+                err = str(e)
+                self.after(0, lambda: self._set_status(f"Erreur : {err}", COLOR_ERROR))
+
+        threading.Thread(target=_load, daemon=True).start()
+
+    def _render_list(self):
+        for w in self._list_scroll.winfo_children():
+            w.destroy()
+
+        if not self._categories:
+            ctk.CTkLabel(
+                self._list_scroll,
+                text="Aucune catégorie",
+                text_color=COLOR_SUBTEXT,
+            ).pack(pady=20)
+            return
+
+        for cat in self._categories:
+            self._make_row(cat)
+
+    # ─── Ligne éditable ──────────────────────────────────────────────────────
+
+    def _make_row(self, cat: dict):
+        row = ctk.CTkFrame(self._list_scroll, fg_color=COLOR_CARD, corner_radius=8)
+        row.pack(fill="x", pady=3)
+
+        # Ordre
+        e_order = ctk.CTkEntry(
+            row, width=50, fg_color=COLOR_PANEL,
+            border_color=COLOR_ACCENT, text_color=COLOR_TEXT,
+            font=ctk.CTkFont(size=12),
+        )
+        e_order.insert(0, str(cat.get("sort_order", 0)))
+        e_order.pack(side="left", padx=(8, 4), pady=6)
+
+        # Slug
+        e_slug = ctk.CTkEntry(
+            row, width=130, fg_color=COLOR_PANEL,
+            border_color=COLOR_ACCENT, text_color=COLOR_TEXT,
+            font=ctk.CTkFont(size=12),
+        )
+        e_slug.insert(0, cat.get("slug", ""))
+        e_slug.pack(side="left", padx=4, pady=6)
+
+        # Label
+        e_label = ctk.CTkEntry(
+            row, width=140, fg_color=COLOR_PANEL,
+            border_color=COLOR_ACCENT, text_color=COLOR_TEXT,
+            font=ctk.CTkFont(size=12),
+        )
+        e_label.insert(0, cat.get("label", ""))
+        e_label.pack(side="left", padx=4, pady=6)
+
+        # Bouton Enregistrer
+        def _save(cat_id=cat["id"]):
+            try:
+                order_val = int(e_order.get().strip() or 0)
+            except ValueError:
+                order_val = 0
+            data = {
+                "slug":       e_slug.get().strip(),
+                "label":      e_label.get().strip(),
+                "sort_order": order_val,
+            }
+            if not data["label"]:
+                self._set_status("Le label est obligatoire.", COLOR_ERROR)
+                return
+
+            def _do():
+                try:
+                    update_category(cat_id, data)
+                    self.after(0, lambda: self._set_status("Catégorie mise à jour ✓", COLOR_SUCCESS))
+                    self.after(0, self.refresh)
+                except Exception as e:
+                    err = str(e)
+                    self.after(0, lambda: self._set_status(f"Erreur : {err}", COLOR_ERROR))
+
+            threading.Thread(target=_do, daemon=True).start()
+
+        ctk.CTkButton(
+            row, text="💾",
+            fg_color=COLOR_ACCENT, hover_color="#b8963e",
+            text_color="#000", width=36, height=28,
+            command=_save,
+        ).pack(side="left", padx=4)
+
+        # Bouton Supprimer
+        def _delete(cat_id=cat["id"], label=cat.get("label", "")):
+            if not messagebox.askyesno(
+                "Confirmer",
+                f"Supprimer la catégorie « {label} » ?\n"
+                "Les projets liés seront impactés.",
+            ):
+                return
+
+            def _do():
+                try:
+                    delete_category(cat_id)
+                    self.after(0, lambda: self._set_status("Catégorie supprimée ✓", COLOR_SUCCESS))
+                    self.after(0, self.refresh)
+                except Exception as e:
+                    err = str(e)
+                    self.after(0, lambda: self._set_status(
+                        f"Erreur (projets liés ?) : {err}", COLOR_ERROR
+                    ))
+
+            threading.Thread(target=_do, daemon=True).start()
+
+        ctk.CTkButton(
+            row, text="✕",
+            fg_color=COLOR_ERROR, hover_color="#c0392b",
+            text_color="white", width=32, height=28,
+            command=_delete,
+        ).pack(side="left", padx=(2, 8))
+
+    # ─── Ajout ───────────────────────────────────────────────────────────────
+
+    def _add_category(self):
+        label = self._new_label.get().strip()
+        if not label:
+            self._set_status("Le label est obligatoire.", COLOR_ERROR)
+            return
+
+        slug = self._new_slug.get().strip() or slugify(label)
+        try:
+            order = int(self._new_order.get().strip() or 0)
+        except ValueError:
+            order = 0
+
+        data = {
+            "id":         str(uuid.uuid4()),
+            "slug":       slug,
+            "label":      label,
+            "sort_order": order,
+        }
+
+        def _do():
+            try:
+                create_category(data)
+                self.after(0, lambda: self._set_status("Catégorie créée ✓", COLOR_SUCCESS))
+                self.after(0, self._reset_form)
+                self.after(0, self.refresh)
+            except Exception as e:
+                err = str(e)
+                self.after(0, lambda: self._set_status(f"Erreur : {err}", COLOR_ERROR))
+
+        threading.Thread(target=_do, daemon=True).start()
+
+    def _reset_form(self):
+        for entry in (self._new_label, self._new_slug, self._new_order):
+            entry.delete(0, "end")
+
+    # ─── Helpers ─────────────────────────────────────────────────────────────
+
+    def _form_field(self, parent, label: str, placeholder: str = "") -> ctk.CTkEntry:
+        row = ctk.CTkFrame(parent, fg_color="transparent")
+        row.pack(fill="x", pady=5)
+        ctk.CTkLabel(
+            row, text=label,
+            text_color=COLOR_SUBTEXT, font=ctk.CTkFont(size=12),
+            width=80, anchor="w",
+        ).pack(side="left")
+        entry = ctk.CTkEntry(
+            row, placeholder_text=placeholder,
+            fg_color=COLOR_CARD, border_color=COLOR_ACCENT,
+            text_color=COLOR_TEXT, width=260,
+        )
+        entry.pack(side="left")
+        return entry
+
+    def _set_status(self, text: str, color: str):
+        self._status_var.set(text)
+        # Chercher le label status et changer sa couleur
+        for w in self.winfo_children():
+            if isinstance(w, ctk.CTkLabel) and w.cget("textvariable") == str(self._status_var):
+                w.configure(text_color=color)
+                break
+
+═════════════════════════════════════════════════════════════════════════════════
+FICHIERS VIEWS TRÈS VOLUMINEUX À LIRE SÉPARÉMENT
+═════════════════════════════════════════════════════════════════════════════════
+
+Les fichiers trop volumineux pour inclusion dans ce document consolidé :
+
+1. main_window.py         (~350 lignes)  - Fenêtre principale avec sidebar
+2. tab_projects.py        (~700 lignes)  - Onglet gestion fichiers/projets  
+3. tab_add_project.py     (~800 lignes)  - Onglet nouveau projet + upload
+4. tab_estimation.py      (~400 lignes)  - Onglet estimation (upload/voir)
+5. tab_facture.py         (~2500 lignes) - Onglet factures/devis/reçus (TRÈS GROS)
+6. tab_shop.py            (~900 lignes)  - Onglet boutique (produits/variantes)
+
+Emplacement des fichiers :
+d:\BOLO\NG_Market_2\admin_dashboard\views\[nom_du_fichier.py]

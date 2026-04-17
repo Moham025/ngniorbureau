@@ -1,0 +1,249 @@
+═════════════════════════════════════════════════════════════════════════════════
+  CONSOLIDATED PYTHON FILES - ADMIN DASHBOARD
+  Fichiers du dossier racine : admin_dashboard/
+═════════════════════════════════════════════════════════════════════════════════
+
+-------config.py-----------
+"""
+Configuration centrale — credentials Supabase et constantes.
+NE PAS committer ce fichier avec une vraie clé en production.
+"""
+
+SUPABASE_URL = "https://xpnwpumcyqueqjdjqdyz.supabase.co"
+
+# Clé service_role : bypass RLS, admin only
+SUPABASE_SERVICE_KEY = (
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+    ".eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhwbndw"
+    "dW1jeXF1ZXFqZGpxZHl6Iiwicm9sZSI6InNlcnZpY2"
+    "Vfcm9sZSIsImlhdCI6MTc3MjU3ODY0OCwiZXhwIjoy"
+    "MDg4MTU0NjQ4fQ.gaH06aNnQA80FHXpXQzCwhWvF2Lg"
+    "DdNlLgElGoqdORo"
+)
+
+BUCKET_NAME = "ng-plans-assets"
+
+# Mapping extension → file_type (colonne DB)
+FILE_TYPE_MAP = {
+    ".webp": "image_preview",
+    ".jpg":  "image_preview",
+    ".jpeg": "image_preview",
+    ".png":  "image_preview",
+    ".pdf":  "plan_pdf",
+    ".dwg":  "plan_dwg",
+    ".dxf":  "plan_dwg",
+    ".xlsx": "plan_excel",
+    ".xls":  "plan_excel",
+    ".pln":  "detail_materiaux",
+    ".json": "estimation_json",
+}
+
+# Extensions image : tier + sous-dossier choisi par l'utilisateur
+IMAGE_EXTENSIONS = {".webp", ".jpg", ".jpeg", ".png"}
+
+# Extensions dont le sous-dossier est ambigu → l'utilisateur choisit
+# (en plus de IMAGE_EXTENSIONS)
+PDF_EXTENSIONS = {".pdf"}
+PDF_SUBFOLDERS = ["plans", "estimation"]   # dans premium/
+
+# Pour les types non-ambigus : chemin auto-détecté
+# extension → (tier, sub_folder)
+AUTO_SUBFOLDER_MAP = {
+    ".dwg":  ("premium", "sources"),
+    ".dxf":  ("premium", "sources"),
+    ".xlsx": ("premium", "estimation"),
+    ".xls":  ("premium", "estimation"),
+    ".json": ("premium", "estimation"),
+    ".pln":  ("premium", "sources"),
+}
+
+# Pour les images : tier → sous-dossiers disponibles (dans l'ordre UI)
+IMAGE_TIER_SUBFOLDERS = {
+    "preview": ["images"],
+    "basic":   ["images", "perspectives"],
+}
+
+# (tier, sub_folder) image → (file_type, package_type) en DB
+IMAGE_PACKAGE_MAP = {
+    ("preview", "images"):       ("image_preview", "preview"),
+    ("basic",   "images"):       ("image_preview", "basic"),
+    ("basic",   "perspectives"): ("image_preview", "basic"),
+}
+
+# package_type par défaut pour les types non-image (aligné avec AUTO_SUBFOLDER_MAP)
+PACKAGE_TYPE_MAP = {
+    ".webp": "preview",
+    ".jpg":  "preview",
+    ".jpeg": "preview",
+    ".png":  "preview",
+    ".pdf":  "premium",
+    ".dwg":  "premium",
+    ".dxf":  "premium",
+    ".xlsx": "premium",
+    ".xls":  "premium",
+    ".json": "premium",
+    ".pln":  "premium",
+}
+
+MIME_MAP = {
+    ".webp": "image/webp",
+    ".jpg":  "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png":  "image/png",
+    ".pdf":  "application/pdf",
+    ".dwg":  "application/acad",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".xls":  "application/vnd.ms-excel",
+    ".json": "application/json",
+    ".pln":  "application/octet-stream",
+}
+
+# Couleurs UI
+COLOR_BG       = "#1a1a2e"
+COLOR_PANEL    = "#16213e"
+COLOR_CARD     = "#0f3460"
+COLOR_ACCENT   = "#c9a84c"
+COLOR_SUCCESS  = "#4CAF50"
+COLOR_ERROR    = "#f44336"
+COLOR_TEXT     = "#e0e0e0"
+COLOR_SUBTEXT  = "#9e9e9e"
+
+-------main.py-----------
+"""
+Point d'entrée — Admin Dashboard ArchLuxe Pro.
+Lancement : python main.py
+"""
+import sys
+import os
+
+# Ajouter le dossier parent au path pour les imports
+sys.path.insert(0, os.path.dirname(__file__))
+
+from views.main_window import MainWindow
+
+
+def main():
+    app = MainWindow()
+    app.mainloop()
+
+
+if __name__ == "__main__":
+    main()
+
+-------migrate_storage.py-----------
+"""
+Script de migration Storage + DB vers la nouvelle structure de sous-dossiers.
+
+Ancienne structure : {project_id}/{tier}/{filename}
+Nouvelle structure : {project_id}/{tier}/{sub_folder}/{filename}
+
+Mapping :
+  image_preview  preview  → preview/images/
+  image_hd       basic    → basic/images/         (aucun existant normalement)
+  estimation_preview basic → basic/perspectives/  (aucun existant normalement)
+  plan_pdf       basic    → premium/plans/        + package_type → premium
+  plan_pdf       premium  → premium/plans/
+  plan_pdf_full  premium  → premium/plans/
+  plan_excel     premium  → premium/estimation/
+  plan_dwg       premium  → premium/sources/
+  detail_materiaux premium → premium/sources/
+
+Lancer depuis le dossier admin_dashboard :
+    python migrate_storage.py [--dry-run]
+"""
+from __future__ import annotations
+import sys
+import os
+
+sys.path.insert(0, os.path.dirname(__file__))
+from services.supabase_client import get_client
+from config import BUCKET_NAME
+
+
+# ─── Règles de migration ──────────────────────────────────────────────────────
+
+def _new_path_and_pkg(file_type: str, package_type: str,
+                      project_id: str, file_name: str) -> tuple[str, str]:
+    """
+    Retourne (nouveau_storage_path, nouveau_package_type).
+    """
+    if file_type == "image_preview" and package_type == "preview":
+        return f"{project_id}/preview/images/{file_name}", "preview"
+
+    if file_type in ("image_hd",) and package_type == "basic":
+        return f"{project_id}/basic/images/{file_name}", "basic"
+
+    if file_type == "estimation_preview" and package_type == "basic":
+        return f"{project_id}/basic/perspectives/{file_name}", "basic"
+
+    if file_type in ("plan_pdf", "plan_pdf_full"):
+        # qu'il soit en basic ou premium → tout va dans premium/plans/
+        return f"{project_id}/premium/plans/{file_name}", "premium"
+
+    if file_type == "plan_excel":
+        return f"{project_id}/premium/estimation/{file_name}", "premium"
+
+    if file_type in ("plan_dwg", "detail_materiaux"):
+        return f"{project_id}/premium/sources/{file_name}", "premium"
+
+    # Cas non reconnu → on garde l'ancien chemin
+    return f"{project_id}/{package_type}/{file_name}", package_type
+
+
+# ─── Exécution ────────────────────────────────────────────────────────────────
+
+def migrate(dry_run: bool = False):
+    client  = get_client()
+    storage = client.storage.from_(BUCKET_NAME)
+
+    print(f"{'[DRY-RUN] ' if dry_run else ''}Migration Storage → nouvelle structure\n")
+
+    # Récupérer tous les fichiers DB
+    res = client.schema("plans").table("project_files").select(
+        "id, project_id, file_name, file_type, package_type, storage_path"
+    ).execute()
+    files = res.data or []
+
+    ok = skip = err = 0
+
+    for f in files:
+        old_path    = f["storage_path"]
+        file_type   = f["file_type"]
+        pkg         = f["package_type"]
+        project_id  = f["project_id"]
+        file_name   = f["file_name"]
+
+        new_path, new_pkg = _new_path_and_pkg(file_type, pkg, project_id, file_name)
+
+        if old_path == new_path:
+            print(f"  ⏭  (déjà ok) {file_name}")
+            skip += 1
+            continue
+
+        print(f"  {'[DRY] ' if dry_run else ''}→ {old_path}")
+        print(f"         ↳ {new_path}  (pkg: {pkg} → {new_pkg})")
+
+        if dry_run:
+            ok += 1
+            continue
+
+        try:
+            # Déplacer le fichier dans Storage
+            storage.move(old_path, new_path)
+            # Mettre à jour la DB
+            client.schema("plans").table("project_files").update({
+                "storage_path": new_path,
+                "package_type": new_pkg,
+            }).eq("id", f["id"]).execute()
+            print(f"     ✅ OK")
+            ok += 1
+        except Exception as e:
+            print(f"     ❌ Erreur : {e}")
+            err += 1
+
+    print(f"\n{'[DRY-RUN] ' if dry_run else ''}Résultat : {ok} migré(s), {skip} déjà ok, {err} erreur(s)")
+
+
+if __name__ == "__main__":
+    dry = "--dry-run" in sys.argv
+    migrate(dry_run=dry)

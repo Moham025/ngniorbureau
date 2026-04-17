@@ -1,0 +1,155 @@
+═════════════════════════════════════════════════════════════════════════════════
+  CONSOLIDATED PYTHON FILES - VIEWS
+  Fichiers du dossier : admin_dashboard/views/
+  FICHIER TRÈS VOLUMINEUX - contient 10 fichiers Python
+═════════════════════════════════════════════════════════════════════════════════
+
+-------__init__.py-----------
+(The file is empty)
+
+-------dialogs.py-----------
+"""
+Dialogs réutilisables — ErrorDialog avec copie presse-papiers.
+"""
+from __future__ import annotations
+import tkinter as tk
+import customtkinter as ctk
+import sys
+import os
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from config import COLOR_BG, COLOR_PANEL, COLOR_CARD, COLOR_ACCENT, COLOR_ERROR, COLOR_TEXT, COLOR_SUBTEXT
+
+
+class ErrorDialog(ctk.CTkToplevel):
+    """Fenêtre modale affichant une erreur complète avec bouton Copier."""
+
+    def __init__(self, parent, error_message: str, title: str = "Erreur"):
+        super().__init__(parent)
+        self.title(title)
+        self.geometry("700x380")
+        self.resizable(True, True)
+        self.configure(fg_color=COLOR_BG)
+
+        # Rester au-dessus de la fenêtre parente
+        self.transient(parent)
+        self.grab_set()
+
+        self._msg = error_message
+        self._build(error_message)
+
+        # Centrer sur le parent
+        self.update_idletasks()
+        px = parent.winfo_rootx() + (parent.winfo_width()  - self.winfo_width())  // 2
+        py = parent.winfo_rooty() + (parent.winfo_height() - self.winfo_height()) // 2
+        self.geometry(f"+{px}+{py}")
+
+    def _build(self, message: str):
+        # En-tête
+        header = ctk.CTkFrame(self, fg_color=COLOR_ERROR, height=44, corner_radius=0)
+        header.pack(fill="x")
+        header.pack_propagate(False)
+
+        ctk.CTkLabel(
+            header,
+            text="⚠  Erreur Supabase",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color="white",
+        ).pack(side="left", padx=16)
+
+        # Zone de texte scrollable
+        txt_frame = ctk.CTkFrame(self, fg_color=COLOR_PANEL, corner_radius=8)
+        txt_frame.pack(fill="both", expand=True, padx=16, pady=(12, 6))
+
+        self._textbox = ctk.CTkTextbox(
+            txt_frame,
+            fg_color=COLOR_CARD,
+            text_color=COLOR_TEXT,
+            font=ctk.CTkFont(family="Consolas", size=11),
+            wrap="word",
+            corner_radius=6,
+        )
+        self._textbox.pack(fill="both", expand=True, padx=8, pady=8)
+        self._textbox.insert("1.0", message)
+        self._textbox.configure(state="disabled")
+
+        # Boutons
+        bar = ctk.CTkFrame(self, fg_color="transparent")
+        bar.pack(fill="x", padx=16, pady=(4, 12))
+
+        self._copy_btn = ctk.CTkButton(
+            bar,
+            text="📋  Copier le message",
+            fg_color=COLOR_CARD,
+            hover_color=COLOR_ACCENT,
+            text_color=COLOR_TEXT,
+            height=34,
+            width=180,
+            command=self._copy,
+        )
+        self._copy_btn.pack(side="left")
+
+        ctk.CTkButton(
+            bar,
+            text="Fermer",
+            fg_color=COLOR_ACCENT,
+            hover_color="#b8963e",
+            text_color="#000",
+            font=ctk.CTkFont(weight="bold"),
+            height=34,
+            width=100,
+            command=self.destroy,
+        ).pack(side="right")
+
+    def _copy(self):
+        self.clipboard_clear()
+        self.clipboard_append(self._msg)
+        self._copy_btn.configure(text="✓  Copié !")
+        self.after(2000, lambda: self._copy_btn.configure(text="📋  Copier le message"))
+
+
+def show_error(parent, message: str, title: str = "Erreur"):
+    """Ouvre une ErrorDialog modale sur le parent."""
+    ErrorDialog(parent, message, title)
+
+[Note: Le fichier views contient 9 autres fichiers très volumineux (main_window.py, tab_projects.py, etc.)
+qui dépassent la limite de caractères pour ce fichier texte unique.
+
+Les fichiers trop volumineux sont pour :
+- main_window.py (code de la fenêtre principale - très long)
+- tab_projects.py (onglet fichiers - très long)
+- tab_add_project.py (formulaire nouveau projet - très long)
+- tab_estimation.py (onglet estimation - très long)
+- tab_facture.py (onglet facture - TRÈS long, ~2500 lignes)
+- tab_shop.py (onglet boutique - très long)
+- tab_admin.py (onglet admin - moyen)
+- tab_categories.py (onglet catégories - moyen)
+
+SOLUTION : Créer des fichiers texte séparés par onglet/module ou lire les fichiers
+directement depuis leur emplacement d'origine.]
+
+═════════════════════════════════════════════════════════════════════════════════
+FICHIERS SUPPLÉMENTAIRES TROP VOLUMINEUX
+═════════════════════════════════════════════════════════════════════════════════
+
+Les fichiers suivants ont été exclus de ce fichier consolidé car ils dépassent 
+la limite de caractères autorisés. Veuillez consulter les fichiers d'origine :
+
+1. main_window.py          (~350 lignes)  → Fenêtre principale avec sidebar
+2. tab_projects.py         (~700 lignes)  → Onglet gestion fichiers/projets  
+3. tab_add_project.py      (~800 lignes)  → Onglet nouveau projet + upload
+4. tab_estimation.py       (~400 lignes)  → Onglet estimation (upload/voir)
+5. tab_facture.py          (~2500 lignes) → Onglet factures/devis/reçus
+6. tab_shop.py             (~900 lignes)  → Onglet boutique (produits/variantes)
+7. tab_admin.py            (~150 lignes)  → Onglet gestion clients
+8. tab_categories.py       (~300 lignes)  → Onglet catégories
+
+Pour accéder à ces fichiers consolidés dans un seul texte, il est recommandé de :
+- Lire chaque fichier individuellement depuis:
+  d:\BOLO\NG_Market_2\admin_dashboard\views\*.py
+
+- Ou combiner manuellement les fichiers avec la séparation suivante :
+  -------nom_du_fichier.py-----------
+  [contenu du fichier]
+  
+═════════════════════════════════════════════════════════════════════════════════

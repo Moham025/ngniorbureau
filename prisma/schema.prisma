@@ -1,0 +1,117 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  plan      String   @default("gratuit")
+  confirmed Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  invoices  Invoice[]
+}
+
+model Category {
+  id        String    @id @default(cuid())
+  slug      String    @unique
+  label     String
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  projects  Project[]
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  description String?
+  category    String
+  categoryId   String
+  tier        String
+  price       String
+  status      String   @default("Brouillon")
+  coverUrl    String?
+  likesCount  Int      @default(0)
+  viewsCount  Int      @default(0)
+  ratingAvg   Float?
+  ratingCount Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  categoryRel Category     @relation(fields: [categoryId], references: [id])
+  files       ProjectFile[]
+  estimations Estimation[]
+}
+
+model ProjectFile {
+  id          String   @id @default(cuid())
+  projectId   String
+  fileName    String
+  fileType    String
+  packageType String
+  storagePath String
+  fileSizeKb  Int
+  mimeType    String
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  price       String
+  stock       Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Invoice {
+  id        String   @id @default(cuid())
+  number    String   @unique
+  type      String
+  status    String
+  amount    String
+  date      DateTime
+  clientId  String
+  items     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client    User     @relation(fields: [clientId], references: [id])
+}
+
+model Estimation {
+  id          String   @id @default(cuid())
+  projectId   String
+  fileName    String
+  totalAmount Float?
+  blocsCount  Int      @default(0)
+  currency    String   @default("XOF")
+  blocs       String
+  uploadedAt  DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}

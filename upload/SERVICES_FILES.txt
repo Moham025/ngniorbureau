@@ -1,0 +1,936 @@
+═════════════════════════════════════════════════════════════════════════════════
+  CONSOLIDATED PYTHON FILES - SERVICES
+  Fichiers du dossier : admin_dashboard/services/
+═════════════════════════════════════════════════════════════════════════════════
+
+-------__init__.py-----------
+from .supabase_client import get_client
+from .admin_service   import get_all_clients, get_documents, create_document
+
+-------supabase_client.py-----------
+"""
+Client Supabase singleton — service_role (bypass RLS).
+"""
+from supabase import create_client, Client
+import sys
+import os
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from config import SUPABASE_URL, SUPABASE_SERVICE_KEY
+
+_client: Client | None = None
+
+
+def get_client() -> Client:
+    """Retourne le client Supabase singleton."""
+    global _client
+    if _client is None:
+        _client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    return _client
+
+-------admin_service.py-----------
+"""
+Services Admin — clients Supabase, factures/devis/reçus.
+"""
+from __future__ import annotations
+from datetime import datetime
+from .supabase_client import get_client
+
+
+# ─── Clients (auth.users via admin API) ──────────────────────────────────────
+
+def get_all_clients() -> list[dict]:
+    """Retourne tous les utilisateurs depuis auth.users (service_role)."""
+    try:
+        users = get_client().auth.admin.list_users()
+        result = []
+        for u in users:
+            meta = u.user_metadata or {}
+            app  = u.app_metadata or {}
+            result.append({
+                "id":           u.id,
+                "email":        u.email or "",
+                "name":         meta.get("full_name") or meta.get("name") or "",
+                "plan":         app.get("plan", "gratuit"),
+                "confirmed":    u.email_confirmed_at is not None,
+                "created_at":   str(u.created_at)[:10] if u.created_at else "",
+                "last_sign_in": str(u.last_sign_in_at)[:10] if u.last_sign_in_at else "",
+            })
+        return result
+    except Exception as e:
+        print(f"[admin_service] get_all_clients error: {e}")
+        return []
+
+
+# ─── Factures / Devis / Reçus ─────────────────────────────────────────────────
+
+def get_documents(doc_type: str | None = None) -> list[dict]:
+    """Retourne les documents (factures, devis, reçus) depuis la table admin.documents."""
+    try:
+        q = get_client().schema("plans").table("documents").select("*").order("created_at", desc=True)
+        if doc_type:
+            q = q.eq("type", doc_type)
+        return q.execute().data or []
+    except Exception:
+        return []
+
+
+def create_document(doc: dict) -> dict | None:
+    """Insère un document. doc doit contenir: type, number, client_email, items, total, status."""
+    try:
+        res = get_client().schema("plans").table("documents").insert(doc).execute()
+        return res.data[0] if res.data else None
+    except Exception as e:
+        print(f"[admin_service] create_document error: {e}")
+        return None
+
+
+def update_document_status(doc_id: str, status: str) -> None:
+    try:
+        get_client().schema("plans").table("documents").update({"status": status}).eq("id", doc_id).execute()
+    except Exception as e:
+        print(f"[admin_service] update_document_status error: {e}")
+
+-------projects_service.py-----------
+"""
+Opérations CRUD sur les tables plans.projects, plans.project_files,
+plans.categories via l'API Supabase (service_role).
+"""
+from __future__ import annotations
+from typing import Any
+import uuid
+
+from .supabase_client import get_client
+
+
+# ─── Catégories ──────────────────────────────────────────────────────────────
+
+def get_categories() -> list[dict]:
+    """Retourne toutes les catégories triées."""
+    res = (
+        get_client()
+        .schema("plans")
+        .table("categories")
+        .select("id, slug, label, sort_order")
+        .order("sort_order")
+        .execute()
+    )
+    return res.data or []
+
+
+def create_category(data: dict) -> dict | None:
+    """Insère une nouvelle catégorie. data : slug, label, sort_order."""
+    res = (
+        get_client()
+        .schema("plans")
+        .table("categories")
+        .insert(data)
+        .execute()
+    )
+    return res.data[0] if res.data else None
+
+
+def update_category(cat_id: str, data: dict) -> dict | None:
+    """Met à jour une catégorie."""
+    res = (
+        get_client()
+        .schema("plans")
+        .table("categories")
+        .update(data)
+        .eq("id", cat_id)
+        .execute()
+    )
+    return res.data[0] if res.data else None
+
+
+def delete_category(cat_id: str) -> None:
+    """Supprime une catégorie (échoue si des projets y sont liés)."""
+    get_client().schema("plans").table("categories").delete().eq(
+        "id", cat_id
+    ).execute()
+
+
+# ─── Projets ─────────────────────────────────────────────────────────────────
+
+def get_all_projects() -> list[dict]:
+    """
+    Retourne tous les projets (actifs ou non) avec catégorie et
+    nombre de fichiers.
+    """
+    res = (
+        get_client()
+        .schema("plans")
+        .table("projects")
+        .select(
+            "id, slug, title, tier, description, price_fcfa, price_discount, "
+            "cover_url, likes_count, views_count, rating_avg, "
+            "rating_count, is_active, created_at, specs, "
+            "category_id, categories(slug, label)"
+        )
+        .order("created_at", desc=True)
+        .execute()
+    )
+    return res.data or []
+
+
+def get_project_files(project_id: str) -> list[dict]:
+    """Retourne tous les fichiers d'un projet."""
+    res = (
+        get_client()
+        .schema("plans")
+        .table("project_files")
+        .select("*")
+        .eq("project_id", project_id)
+        .order("sort_order")
+        .execute()
+    )
+    return res.data or []
+
+
+def create_project(data: dict) -> dict | None:
+    """
+    Insère un nouveau projet.
+    data doit contenir au minimum : slug, title, category_id, tier.
+    """
+    res = (
+        get_client()
+        .schema("plans")
+        .table("projects")
+        .insert(data)
+        .execute()
+    )
+    return res.data[0] if res.data else None
+
+
+def update_project(project_id: str, data: dict) -> dict | None:
+    """Met à jour les champs d'un projet existant."""
+    res = (
+        get_client()
+        .schema("plans")
+        .table("projects")
+        .update(data)
+        .eq("id", project_id)
+        .execute()
+    )
+    return res.data[0] if res.data else None
+
+
+def delete_project(project_id: str) -> None:
+    """Supprime un projet et tous ses fichiers (CASCADE en DB)."""
+    get_client().schema("plans").table("projects").delete().eq(
+        "id", project_id
+    ).execute()
+
+
+# ─── Fichiers projet ─────────────────────────────────────────────────────────
+
+def add_project_file(file_data: dict) -> dict | None:
+    """
+    Insère une entrée dans plans.project_files.
+    file_data : project_id, file_name, file_type, package_type,
+                storage_path, file_size_kb, mime_type, sort_order.
+    """
+    res = (
+        get_client()
+        .schema("plans")
+        .table("project_files")
+        .insert(file_data)
+        .execute()
+    )
+    return res.data[0] if res.data else None
+
+
+def delete_project_file(file_id: str) -> None:
+    """Supprime une entrée de plans.project_files."""
+    get_client().schema("plans").table("project_files").delete().eq(
+        "id", file_id
+    ).execute()
+
+
+# ─── Stats ───────────────────────────────────────────────────────────────────
+
+def get_project_stats(project_id: str) -> dict:
+    """Retourne likes, views, rating pour un projet."""
+    res = (
+        get_client()
+        .schema("plans")
+        .table("projects")
+        .select("likes_count, views_count, rating_avg, rating_count")
+        .eq("id", project_id)
+        .single()
+        .execute()
+    )
+    return res.data or {}
+
+-------shop_admin_service.py-----------
+"""
+Opérations CRUD sur les tables plans.products, plans.product_variants,
+plans.product_images via l'API Supabase (service_role).
+"""
+from __future__ import annotations
+from typing import Any
+import uuid
+
+from .supabase_client import get_client
+
+# ─── Produits (Boutique) ─────────────────────────────────────────────────────
+
+def create_product(data: dict) -> dict | None:
+    """
+    Insère un nouveau produit matériel.
+    """
+    res = (
+        get_client()
+        .schema("plans")
+        .table("products")
+        .insert(data)
+        .execute()
+    )
+    return res.data[0] if res.data else None
+
+def create_product_variant(data: dict) -> dict | None:
+    """
+    Insère une variante de produit.
+    """
+    res = (
+        get_client()
+        .schema("plans")
+        .table("product_variants")
+        .insert(data)
+        .execute()
+    )
+    return res.data[0] if res.data else None
+
+def create_product_image(data: dict) -> dict | None:
+    """
+    Insère une image associée à un produit (galerie).
+    """
+    res = (
+        get_client()
+        .schema("plans")
+        .table("product_images")
+        .insert(data)
+        .execute()
+    )
+    return res.data[0] if res.data else None
+
+def update_product(product_id: str, data: dict) -> dict | None:
+    """Met à jour les champs d'un produit."""
+    res = (
+        get_client()
+        .schema("plans")
+        .table("products")
+        .update(data)
+        .eq("id", product_id)
+        .execute()
+    )
+    return res.data[0] if res.data else None
+
+def delete_product_variants(product_id: str) -> None:
+    """Supprime toutes les variantes d'un produit spécifique."""
+    get_client().schema("plans").table("product_variants").delete().eq(
+        "product_id", product_id
+    ).execute()
+
+def get_all_products() -> list[dict]:
+    """
+    Retourne tous les produits matériels inscrits dans la base de données.
+    """
+    res = (
+        get_client()
+        .schema("plans")
+        .table("products")
+        .select("*, product_variants(*), product_images(*)")
+        .order("created_at", desc=True)
+        .execute()
+    )
+    return res.data or []
+
+def delete_product(product_id: str) -> None:
+    """
+    Supprime un produit. La base SQL s'assurera 
+    de supprimer via CASCADE les variantes et images associées.
+    """
+    get_client().schema("plans").table("products").delete().eq(
+        "id", product_id
+    ).execute()
+
+-------storage_service.py-----------
+"""
+Opérations Storage Supabase : upload, delete, list, URL publique.
+Convention : {project_id}/{package_type}/{filename}
+"""
+from __future__ import annotations
+import os
+import re
+import sys
+import unicodedata
+from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from config import (
+    BUCKET_NAME, FILE_TYPE_MAP, PACKAGE_TYPE_MAP, MIME_MAP,
+    IMAGE_EXTENSIONS, AUTO_SUBFOLDER_MAP, IMAGE_PACKAGE_MAP,
+)
+from .supabase_client import get_client
+
+
+def _storage():
+    return get_client().storage.from_(BUCKET_NAME)
+
+
+def _safe_filename(name: str) -> str:
+    """
+    Sanitise un nom de fichier pour Supabase Storage.
+    - Normalise les caractères Unicode (é → e, ' → ', etc.)
+    - Remplace tout caractère non ASCII-safe par '_'
+    """
+    stem, ext = os.path.splitext(name)
+    # Décompose les accents puis encode en ASCII (ignore les non-convertibles)
+    stem = unicodedata.normalize("NFKD", stem).encode("ascii", "ignore").decode("ascii")
+    stem = re.sub(r"[^\w\-]", "_", stem)    # garde lettres, chiffres, _, -
+    stem = re.sub(r"_+", "_", stem).strip("_")
+    return (stem or "file") + ext.lower()
+
+
+# ─── Upload ──────────────────────────────────────────────────────────────────
+
+def upload_file(
+    project_id: str,
+    local_path: str,
+    tier: str | None = None,
+    sub_folder: str | None = None,
+) -> dict:
+    """
+    Upload un fichier dans le bucket.
+
+    Structure : {project_id}/{tier}/{sub_folder}/{filename}
+      preview/images/     ← images aperçu libres
+      basic/images/       ← images HD (payant)
+      basic/perspectives/ ← images perspectives/3D (payant)
+      premium/plans/      ← PDF plans complets
+      premium/estimation/ ← PDF + Excel devis
+      premium/sources/    ← DWG, DXF, PLN
+
+    Pour les images, tier+sub_folder sont fournis par l'appelant (choix utilisateur).
+    Pour les autres types, ils sont auto-détectés depuis l'extension.
+    """
+    path      = Path(local_path)
+    ext       = path.suffix.lower()
+    mime      = MIME_MAP.get(ext, "application/octet-stream")
+    safe_name = _safe_filename(path.name)
+
+    # Auto-détection pour les types non-image
+    if tier is None or sub_folder is None:
+        if ext in AUTO_SUBFOLDER_MAP:
+            tier, sub_folder = AUTO_SUBFOLDER_MAP[ext]
+        else:
+            # Image sans destination → défaut preview/images
+            tier, sub_folder = "preview", "images"
+
+    # Déterminer file_type et package_type
+    if ext in IMAGE_EXTENSIONS:
+        ft, pkg = IMAGE_PACKAGE_MAP.get((tier, sub_folder), ("image_preview", "preview"))
+    else:
+        ft  = FILE_TYPE_MAP.get(ext, "image_preview")
+        pkg = PACKAGE_TYPE_MAP.get(ext, "premium")
+
+    storage_path = f"{project_id}/{tier}/{sub_folder}/{safe_name}"
+    file_size_kb = max(1, round(path.stat().st_size / 1024))
+
+    with open(local_path, "rb") as f:
+        _storage().upload(
+            path=storage_path,
+            file=f,
+            file_options={"content-type": mime, "upsert": "true"},
+        )
+
+    return {
+        "storage_path": storage_path,
+        "file_type":    ft,
+        "package_type": pkg,
+        "mime_type":    mime,
+        "file_size_kb": file_size_kb,
+        "file_name":    safe_name,
+    }
+
+
+# ─── Delete ──────────────────────────────────────────────────────────────────
+
+def delete_file(storage_path: str) -> None:
+    """Supprime un fichier du bucket via son storage_path."""
+    _storage().remove([storage_path])
+
+
+def delete_project_folder(project_id: str) -> None:
+    """Supprime tous les fichiers d'un projet dans le bucket."""
+    files = list_project_files(project_id)
+    paths = [f["storage_path"] for f in files if f.get("storage_path")]
+    if paths:
+        _storage().remove(paths)
+
+
+# ─── Nettoyage orphelins ─────────────────────────────────────────────────────
+
+def list_storage_project_ids() -> list[str]:
+    """
+    Retourne la liste des project_id (dossiers racine) présents dans le bucket.
+    Les dossiers apparaissent avec id=None dans la réponse de Supabase Storage.
+    """
+    try:
+        items = _storage().list("", {"limit": 1000})
+        return [
+            item["name"] for item in (items or [])
+            if item.get("id") is None and item.get("name")
+        ]
+    except Exception:
+        return []
+
+
+def cleanup_orphan_folders(valid_ids: set[str]) -> tuple[list[str], list[str]]:
+    """
+    Supprime les dossiers Storage dont le project_id n'est pas dans valid_ids.
+    Retourne (supprimés, erreurs).
+    """
+    storage_ids = list_storage_project_ids()
+    orphans     = [pid for pid in storage_ids if pid not in valid_ids]
+    deleted, errors = [], []
+    for pid in orphans:
+        try:
+            delete_project_folder(pid)
+            deleted.append(pid)
+        except Exception as e:
+            errors.append(f"{pid[:8]}… : {e}")
+    return deleted, errors
+
+
+# ─── Liste ───────────────────────────────────────────────────────────────────
+
+def list_project_files(project_id: str) -> list[dict]:
+    """
+    Liste tous les fichiers dans la nouvelle structure à sous-dossiers :
+      preview/images/  · basic/images/  · basic/perspectives/
+      premium/plans/   · premium/estimation/ · premium/sources/
+    """
+    _STRUCTURE = {
+        "preview": ["images"],
+        "basic":   ["images", "perspectives"],
+        "premium": ["plans", "estimation", "sources"],
+    }
+    all_files: list[dict] = []
+    for tier, sub_folders in _STRUCTURE.items():
+        for sub in sub_folders:
+            prefix = f"{project_id}/{tier}/{sub}"
+            try:
+                files = _storage().list(prefix)
+                for f in (files or []):
+                    f["storage_path"] = f"{prefix}/{f['name']}"
+                    f["package_type"] = tier
+                all_files.extend(files or [])
+            except Exception:
+                pass
+    return all_files
+
+
+# ─── URL publique ─────────────────────────────────────────────────────────────
+
+def get_public_url(storage_path: str) -> str:
+    """Retourne l'URL publique d'un fichier dans le bucket."""
+    return _storage().get_public_url(storage_path)
+
+
+def get_signed_url(storage_path: str, expires_in: int = 3600) -> str:
+    """Retourne une URL signée (pour fichiers non-publics)."""
+    res = _storage().create_signed_url(storage_path, expires_in)
+    return res.get("signedURL", "")
+
+
+# ─── Produits (Boutique) ─────────────────────────────────────────────────────
+
+def upload_product_file(
+    product_id: str,
+    local_path: str,
+    folder_type: str = "thumbnail",
+) -> dict:
+    """
+    Upload un fichier dans le bucket pour la boutique.
+    Structure : products/{product_id}/{folder_type}/{filename}
+    folder_type : "thumbnail" ou "gallery"
+    """
+    path      = Path(local_path)
+    ext       = path.suffix.lower()
+    mime      = MIME_MAP.get(ext, "application/octet-stream")
+    safe_name = _safe_filename(path.name)
+
+    storage_path = f"products/{product_id}/{folder_type}/{safe_name}"
+    
+    with open(local_path, "rb") as f:
+        _storage().upload(
+            path=storage_path,
+            file=f,
+            file_options={"content-type": mime, "upsert": "true"},
+        )
+
+    return {
+        "storage_path": storage_path,
+        "public_url": get_public_url(storage_path),
+        "file_name": safe_name,
+    }
+
+-------estimation_service.py-----------
+"""
+Service estimation — parse les JSON plats et uploade vers Supabase.
+"""
+from __future__ import annotations
+import json
+import re
+import sys
+import os
+from pathlib import Path
+import glob
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from services.supabase_client import get_client
+
+
+# ─── Helpers de parsing ───────────────────────────────────────────────────────
+
+def _parse_montant(s: str) -> float | None:
+    """Convertit '46 122 925,00' → 46122925.0  (format fr/XOF)."""
+    if not s or not str(s).strip():
+        return None
+    cleaned = (
+        str(s)
+        .replace('\u202f', '')   # espace fine insécable
+        .replace('\xa0', '')     # espace insécable
+        .replace(' ', '')
+        .replace(',', '.')
+    )
+    try:
+        return float(cleaned)
+    except ValueError:
+        return None
+
+
+def _is_section_header(ligne: dict) -> bool:
+    """Détecte un en-tête de section : type == 'section_hdr' ou chiffre romain."""
+    if ligne.get('type') == 'section_hdr':
+        return True
+    num = str(ligne.get('numero', ligne.get('num', ''))).strip()
+    return (
+        bool(re.match(r'^[IVX]+$', num))
+        and not str(ligne.get('montant', '')).strip()
+    )
+
+
+# ─── Transformation : liste plate → blocs structurés ─────────────────────────
+
+def transform_estimation(lignes: list) -> tuple[list, float | None]:
+    """
+    Transforme la liste plate de l'Estimation.json en blocs structurés.
+    Retourne (blocs, total_htva).
+
+    Structure d'un bloc :
+    {
+        "numero": "I",
+        "titre": "TERRASSEMENT",
+        "total": 2153600.0,
+        "lignes": [
+            {"numero": "I.1", "description": "...", "unite": "m²",
+             "quantite": 300.0, "prix_unitaire": 500.0, "montant": 150000.0},
+            ...
+        ]
+    }
+    """
+    blocs: list  = []
+    current_bloc: dict | None = None
+    total_htva: float | None  = None
+
+    for ligne in lignes:
+        num        = str(ligne.get('numero', ligne.get('num', ''))).strip()
+        montant_var = ligne.get('montant', '')
+        montant_s  = str(montant_var).strip() if montant_var is not None else ''
+
+        # ── Total général HTVA ─────────────────────────────────
+        if ligne.get('type') == 'grand_total' or ('TOTAL' in num.upper() and 'GÉNÉRAL' in num.upper()):
+            total_htva = _parse_montant(montant_s) if isinstance(montant_var, str) else float(montant_var) if montant_var else 0.0
+            continue
+
+        # ── Arrêté du devis (longue phrase) ───────────────────
+        if len(num) > 30:
+            continue
+
+        # ── Séparateur récapitulatif → on arrête la collecte ──
+        if 'RÉCAPITULATIF' in num.upper() or 'RECAPITULATIF' in num.upper():
+            if current_bloc:
+                blocs.append(current_bloc)
+                current_bloc = None
+            continue
+
+        # ── En-tête de section (I, II, III…) ──────────────────
+        if ligne.get('type') == 'section_hdr' or _is_section_header(ligne):
+            if current_bloc:
+                blocs.append(current_bloc)
+            current_bloc = {
+                'numero': num,
+                'titre':  ligne.get('description', ''),
+                'total':  None,
+                'lignes': [],
+            }
+            continue
+
+        # ── Total de section (TOTAL I, TOTAL II…) ─────────────
+        if ligne.get('type') == 'section_total' or (num.upper().startswith('TOTAL ') and current_bloc):
+            current_bloc['total'] = float(montant_var) if isinstance(montant_var, (int, float)) else _parse_montant(montant_s)
+            continue
+
+        # ── Ligne de détail ───────────────────────────────────
+        if ligne.get('type') == 'mat_header' or ligne.get('type') == 'mat_resume_hdr' or not current_bloc:
+            continue
+        
+        # conversion locale safe
+        def safe_float(v):
+            if isinstance(v, (int, float)): return float(v)
+            return _parse_montant(str(v))
+
+        current_bloc['lignes'].append({
+            'numero':        num,
+            'description':   ligne.get('description', ''),
+            'unite':         ligne.get('unite', ''),
+            'quantite':      safe_float(ligne.get('quantite', '')),
+            'prix_unitaire': safe_float(ligne.get('prix_unitaire', ligne.get('pu', ''))),
+            'montant':       safe_float(montant_var),
+        })
+
+    # Dernier bloc éventuel
+    if current_bloc:
+        blocs.append(current_bloc)
+
+    return blocs, total_htva
+
+
+def parse_estimation_file(path: str) -> dict:
+    """Lit Estimation.json et retourne {blocs, total_htva, fichier_source}."""
+    with open(path, encoding='utf-8') as f:
+        data = json.load(f)
+
+    lignes     = data.get('lignes', data.get('rows', []))
+    blocs, total = transform_estimation(lignes)
+
+    return {
+        'fichier_source': data.get('fichier_source', Path(path).name),
+        'blocs':          blocs,
+        'blocs_count':    len(blocs),
+        'total_htva':     total,
+        'currency':       'XOF',
+    }
+
+
+def parse_materiaux_file(path: str) -> dict:
+    """Lit Detail_Materiaux_*.json et retourne {resume, fichier_source}."""
+    with open(path, encoding='utf-8') as f:
+        data = json.load(f)
+
+    return {
+        'fichier_source': data.get('fichier_source', Path(path).name),
+        'resume':         data.get('resume_approvisionnement', []),
+    }
+
+
+def _load_raw_json(filepath: str | None) -> dict:
+    """Charge un fichier JSON brut si le chemin existe, sinon retourne un objet dict vide."""
+    if filepath and os.path.exists(filepath):
+        with open(filepath, encoding='utf-8') as f:
+            return json.load(f)
+    return {}
+
+
+def parse_full_estimation_directory(estimation_file_path: str) -> dict:
+    """
+    Si format Unifié EstimBatiment ({'outputs': [...]}), on extrait tout.
+    Sinon on utilise glob pour trouver les 4 autres fichiers locaux.
+    """
+    data = _load_raw_json(estimation_file_path)
+    filename = Path(estimation_file_path).name
+
+    parsed = {
+        'modele_estimation': None,
+        'gros_oeuvre_data': {},
+        'finition_data': {},
+        'main_oeuvre_data': {},
+        'materiaux_data': {}
+    }
+
+    if 'outputs' in data:
+        # ─── FORMAT UNIFIÉ ESTIMBATIMENT ───
+        for out in data['outputs']:
+            pid = out.get('id')
+            rows = out.get('rows', [])
+            if pid == 'estimation':
+                blocs, total = transform_estimation(rows)
+                parsed['modele_estimation'] = {
+                    'fichier_source': filename,
+                    'blocs': blocs,
+                    'blocs_count': len(blocs),
+                    'total_htva': total,
+                    'currency': 'XOF'
+                }
+            elif pid == 'gros_oeuvre':
+                b, _ = transform_estimation(rows)
+                parsed['gros_oeuvre_data'] = {'blocs': b}
+            elif pid == 'finition':
+                b, _ = transform_estimation(rows)
+                parsed['finition_data'] = {'blocs': b}
+            elif pid == 'main_oeuvre':
+                b, _ = transform_estimation(rows)
+                parsed['main_oeuvre_data'] = {'blocs': b}
+            elif pid == 'detail_materiaux':
+                resume_rows = [r for r in rows if r.get('type') == 'mat_resume']
+                parsed['materiaux_data'] = {'resume': resume_rows}
+        
+        if not parsed['modele_estimation']:
+            raise ValueError("Le JSON contenant les outputs ne possède pas 'estimation'.")
+        return parsed
+
+    else:
+        # ─── ANCIEN FORMAT MULTI-FICHIERS ───
+        parsed['modele_estimation'] = parse_estimation_file(estimation_file_path)
+        directory = os.path.dirname(estimation_file_path)
+        
+        gros_oeuvre = next(iter(glob.glob(os.path.join(directory, "*Gros_oeuvre_*.json"))), None)
+        finition = next(iter(glob.glob(os.path.join(directory, "*Finition_*.json"))), None)
+        main_oeuvre = next(iter(glob.glob(os.path.join(directory, "*Main_d_oeuvre_*.json"))), None)
+        materiaux = next(iter(glob.glob(os.path.join(directory, "*Materiaux_*.json"))), None)
+
+        def make_blocs(path):
+            raw = _load_raw_json(path)
+            if not raw: return {}
+            b, _ = transform_estimation(raw.get('lignes', raw.get('rows', [])))
+            return {'blocs': b} if b else raw
+
+        def make_resume_materiaux(path):
+            raw = _load_raw_json(path)
+            if not raw: return {}
+            # Si c'est l'ancien format, on regarde si'il y a un "resume_approvisionnement"
+            if 'resume_approvisionnement' in raw:
+                return {'resume': raw['resume_approvisionnement']}
+            # Sinon on cherche dans rows
+            rows = raw.get('rows', [])
+            resume_rows = [r for r in rows if r.get('type') == 'mat_resume']
+            return {'resume': resume_rows} if resume_rows else raw
+            
+        parsed['gros_oeuvre_data'] = make_blocs(gros_oeuvre)
+        parsed['finition_data'] = make_blocs(finition)
+        parsed['main_oeuvre_data'] = make_blocs(main_oeuvre)
+        parsed['materiaux_data'] = make_resume_materiaux(materiaux)
+
+        return parsed
+
+
+# ─── Upload vers Supabase ─────────────────────────────────────────────────────
+
+def upload_estimation(project_id: str, parsed_directory_data: dict) -> dict:
+    """
+    Insère en base l'estimation structurée ains que les 4 JSON bruts
+    directement dans la table `estimations`.
+    """
+    client = get_client()
+
+    try:
+        est = parsed_directory_data['modele_estimation']
+
+        payload = {
+            'project_id':       project_id,
+            'fichier_source':   est['fichier_source'],
+            'total_htva':       est['total_htva'],
+            'currency':         est.get('currency', 'XOF'),
+            'blocs_count':      est['blocs_count'],
+            'blocs':            est['blocs'],
+            
+            'gros_oeuvre_data': parsed_directory_data.get('gros_oeuvre_data', {}),
+            'finition_data':    parsed_directory_data.get('finition_data', {}),
+            'main_oeuvre_data': parsed_directory_data.get('main_oeuvre_data', {}),
+            'materiaux_data':   parsed_directory_data.get('materiaux_data', {}),
+        }
+
+        resp = (
+            client.schema('plans')
+            .from_('estimations')
+            .upsert(payload, on_conflict='project_id')
+            .execute()
+        )
+
+        if not resp.data:
+            return {'ok': False, 'error': 'Aucune donnée retournée après upsert estimation.'}
+
+        estimation_id = resp.data[0]['id']
+
+        return {'ok': True, 'estimation_id': estimation_id}
+
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
+
+
+def get_estimation(project_id: str) -> dict | None | str:
+    """
+    Récupère l'estimation + matériaux d'un projet depuis Supabase.
+    Retourne : dict si trouvé, None si aucune donnée, str (message erreur) si échec.
+    """
+    try:
+        resp = (
+            get_client()
+            .schema('plans')
+            .from_('estimations')
+            .select('*, materiaux(*)')
+            .eq('project_id', project_id)
+            .execute()
+        )
+        if not resp.data:
+            return None
+        return resp.data[0]  # premier (et seul) résultat
+    except Exception as e:
+        return f'ERREUR: {e}'
+
+
+def delete_estimation(project_id: str) -> dict:
+    """Supprime l'estimation (et les matériaux en cascade) d'un projet."""
+    try:
+        get_client() \
+            .schema('plans') \
+            .from_('estimations') \
+            .delete() \
+            .eq('project_id', project_id) \
+            .execute()
+        return {'ok': True}
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
+
+
+def delete_materiaux(estimation_id: str) -> dict:
+    """Supprime uniquement les matériaux liés à une estimation."""
+    try:
+        get_client() \
+            .schema('plans') \
+            .from_('materiaux') \
+            .delete() \
+            .eq('estimation_id', estimation_id) \
+            .execute()
+        return {'ok': True}
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
+
+
+def get_projects_list() -> list[dict]:
+    """Retourne la liste des projets (id, title) pour le sélecteur UI."""
+    try:
+        resp = (
+            get_client()
+            .schema('plans')
+            .from_('projects')
+            .select('id, title')
+            .order('title')
+            .execute()
+        )
+        return resp.data or []
+    except Exception:
+        return []
