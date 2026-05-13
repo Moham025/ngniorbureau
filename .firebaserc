@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "ngniormarket"
+  },
+  "targets": {
+    "ngniormarket": {
+      "hosting": {
+        "ngbureau": [
+          "ngbureau-admin"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

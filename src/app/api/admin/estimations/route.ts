@@ -1,4 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { supabaseAdmin } from '@/lib/supabase'
+
+export async function GET(request: NextRequest) {
+  const projectId = request.nextUrl.searchParams.get('projectId')
+
+  let query = supabaseAdmin
+    .from('estimations')
+    .select('*')
+    .order('created_at', { ascending: false })
+
+  if (projectId) query = query.eq('project_id', projectId)
+
+  const { data, error } = await query
+
+  if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 })
+
+  return NextResponse.json({ success: true, data, total: data.length })
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -6,96 +24,37 @@ export async function POST(request: NextRequest) {
     const file = formData.get('file') as File
     const projectId = formData.get('projectId') as string
 
-    if (!file) {
-      return NextResponse.json(
-        { success: false, error: 'No file provided' },
-        { status: 400 }
-      )
-    }
+    if (!file) return NextResponse.json({ success: false, error: 'Fichier requis' }, { status: 400 })
+    if (!file.name.endsWith('.json')) return NextResponse.json({ success: false, error: 'Seuls les fichiers JSON sont acceptés' }, { status: 400 })
 
-    // Check if it's a JSON file
-    if (!file.name.endsWith('.json')) {
-      return NextResponse.json(
-        { success: false, error: 'Only JSON files are supported' },
-        { status: 400 }
-      )
-    }
-
-    // Read file content
     const text = await file.text()
-
+    let jsonData: Record<string, unknown>
     try {
-      const jsonData = JSON.parse(text)
-
-      // Process estimation data
-      const processedData = {
-        id: `est_${Date.now()}`,
-        projectId: projectId || 'unknown',
-        fileName: file.name,
-        uploadedAt: new Date().toISOString(),
-        data: jsonData,
-        // Extract key information from the JSON
-        totalAmount: jsonData.total_htva || jsonData.total || 0,
-        blocsCount: jsonData.blocs?.length || 0,
-      }
-
-      // In production, you would save this to your database
-      // For now, we just return success
-
-      return NextResponse.json({
-        success: true,
-        data: processedData,
-        message: 'Estimation uploaded successfully',
-      })
-    } catch (parseError) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid JSON file format' },
-        { status: 400 }
-      )
+      jsonData = JSON.parse(text)
+    } catch {
+      return NextResponse.json({ success: false, error: 'Format JSON invalide' }, { status: 400 })
     }
-  } catch (error) {
-    return NextResponse.json(
-      { success: false, error: 'Failed to upload estimation' },
-      { status: 500 }
-    )
+
+    const blocs = Array.isArray(jsonData.blocs) ? jsonData.blocs : []
+    const totalAmount = (jsonData.total_htva as number) || (jsonData.total as number) || 0
+
+    const { data, error } = await supabaseAdmin
+      .from('estimations')
+      .upsert({
+        project_id: projectId || null,
+        file_name: file.name,
+        total_amount: totalAmount,
+        blocs_count: blocs.length,
+        currency: 'XOF',
+        blocs: blocs,
+      })
+      .select()
+      .single()
+
+    if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 })
+
+    return NextResponse.json({ success: true, data })
+  } catch {
+    return NextResponse.json({ success: false, error: 'Erreur serveur' }, { status: 500 })
   }
-}
-
-export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams
-  const projectId = searchParams.get('projectId')
-
-  // Mock estimations data
-  const estimations = [
-    {
-      id: 'est_1',
-      projectId: 'p1',
-      fileName: 'Estimation.json',
-      uploadedAt: '2024-04-15T10:30:00Z',
-      totalAmount: 46000000,
-      blocsCount: 8,
-      currency: 'XOF',
-    },
-    {
-      id: 'est_2',
-      projectId: 'p2',
-      fileName: 'Estimation_Villa.json',
-      uploadedAt: '2024-04-14T14:20:00Z',
-      totalAmount: 32000000,
-      blocsCount: 6,
-      currency: 'XOF',
-    },
-  ]
-
-  let filtered = estimations
-
-  if (projectId) {
-    filtered = estimations.filter((est) => est.projectId === projectId)
-  }
-
-  return NextResponse.json({
-    success: true,
-    data: filtered,
-    total: filtered.length,
-  })
 }

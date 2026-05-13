@@ -1,63 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server'
-
-// Mock data
-let categories = [
-  { id: 'c1', order: 10, slug: 'villas-r1', label: 'Villas R+1' },
-  { id: 'c2', order: 20, slug: 'duplex', label: 'Duplex & Triplex' },
-  { id: 'c3', order: 30, slug: 'immeubles', label: 'Immeubles' },
-]
+import { supabaseAdmin } from '@/lib/supabase'
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const body = await request.json()
-    const categoryIndex = categories.findIndex((c) => c.id === params.id)
 
-    if (categoryIndex === -1) {
-      return NextResponse.json(
-        { success: false, error: 'Category not found' },
-        { status: 404 }
-      )
-    }
+    const { data, error } = await supabaseAdmin
+      .from('categories')
+      .update({ label: body.label, slug: body.slug, sort_order: body.order ?? body.sort_order })
+      .eq('id', id)
+      .select()
+      .single()
 
-    categories[categoryIndex] = {
-      ...categories[categoryIndex],
-      ...body,
-      id: params.id,
-    }
+    if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 })
 
-    return NextResponse.json({
-      success: true,
-      data: categories[categoryIndex],
-      message: 'Category updated successfully',
-    })
-  } catch (error) {
-    return NextResponse.json(
-      { success: false, error: 'Failed to update category' },
-      { status: 500 }
-    )
+    return NextResponse.json({ success: true, data })
+  } catch {
+    return NextResponse.json({ success: false, error: 'Erreur serveur' }, { status: 500 })
   }
 }
 
 export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const categoryIndex = categories.findIndex((c) => c.id === params.id)
+  const { id } = await params
+  const { error } = await supabaseAdmin.from('categories').delete().eq('id', id)
 
-  if (categoryIndex === -1) {
-    return NextResponse.json(
-      { success: false, error: 'Category not found' },
-      { status: 404 }
-    )
-  }
+  if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 })
 
-  categories.splice(categoryIndex, 1)
-
-  return NextResponse.json({
-    success: true,
-    message: 'Category deleted successfully',
-  })
+  return NextResponse.json({ success: true })
 }

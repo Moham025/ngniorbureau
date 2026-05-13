@@ -1,82 +1,53 @@
 import { NextRequest, NextResponse } from 'next/server'
-
-// Mock data - In a real app, this would be in a shared module
-let projects = [
-  { id: 'p1', title: 'Villa R+1 Moderne', category: 'Villas', tier: 'premium', price: '350 000 FCFA', status: 'Actif', description: '' },
-  { id: 'p2', title: 'Duplex Familial', category: 'Duplex', tier: 'basic', price: '150 000 FCFA', status: 'Actif', description: '' },
-  { id: 'p3', title: 'Immeuble R+4', category: 'Immeubles', tier: 'premium', price: '900 000 FCFA', status: 'Brouillon', description: '' },
-]
+import { supabaseAdmin } from '@/lib/supabase'
 
 export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const project = projects.find((p) => p.id === params.id)
+  const { id } = await params
+  const { data, error } = await supabaseAdmin
+    .from('projects')
+    .select('*, categories(slug, label), project_files(*)')
+    .eq('id', id)
+    .single()
 
-  if (!project) {
-    return NextResponse.json(
-      { success: false, error: 'Project not found' },
-      { status: 404 }
-    )
-  }
+  if (error) return NextResponse.json({ success: false, error: error.message }, { status: 404 })
 
-  return NextResponse.json({
-    success: true,
-    data: project,
-  })
+  return NextResponse.json({ success: true, data })
 }
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const body = await request.json()
-    const projectIndex = projects.findIndex((p) => p.id === params.id)
 
-    if (projectIndex === -1) {
-      return NextResponse.json(
-        { success: false, error: 'Project not found' },
-        { status: 404 }
-      )
-    }
+    const { data, error } = await supabaseAdmin
+      .from('projects')
+      .update(body)
+      .eq('id', id)
+      .select()
+      .single()
 
-    projects[projectIndex] = {
-      ...projects[projectIndex],
-      ...body,
-      id: params.id, // Ensure ID doesn't change
-    }
+    if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 })
 
-    return NextResponse.json({
-      success: true,
-      data: projects[projectIndex],
-      message: 'Project updated successfully',
-    })
-  } catch (error) {
-    return NextResponse.json(
-      { success: false, error: 'Failed to update project' },
-      { status: 500 }
-    )
+    return NextResponse.json({ success: true, data })
+  } catch {
+    return NextResponse.json({ success: false, error: 'Erreur serveur' }, { status: 500 })
   }
 }
 
 export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const projectIndex = projects.findIndex((p) => p.id === params.id)
+  const { id } = await params
+  const { error } = await supabaseAdmin.from('projects').delete().eq('id', id)
 
-  if (projectIndex === -1) {
-    return NextResponse.json(
-      { success: false, error: 'Project not found' },
-      { status: 404 }
-    )
-  }
+  if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 })
 
-  projects.splice(projectIndex, 1)
-
-  return NextResponse.json({
-    success: true,
-    message: 'Project deleted successfully',
-  })
+  return NextResponse.json({ success: true })
 }
