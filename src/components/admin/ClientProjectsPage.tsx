@@ -4,21 +4,14 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Plus, RefreshCw, X, Save, Loader2, AlertCircle,
   FolderOpen, Trash2, Edit2, Eye, Paperclip, Link2, DollarSign, Printer,
-  FileText, Receipt, Search, CheckCircle, Bot, Settings2, FileJson, Download
+  FileText, Receipt, Search, CheckCircle, Bot, Settings2, FileJson, Download,
+  ChevronLeft, ChevronRight
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuCheckboxItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -99,30 +92,82 @@ const COLUMN_LABELS = {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function ClientProjectsPage() {
-  const [visibleColumns, setVisibleColumns] = useState(() => {
+  const [collapsedColumns, setCollapsedColumns] = useState<Record<string, boolean>>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('client-projects-cols')
+      const saved = localStorage.getItem('client-projects-collapsed')
       if (saved) {
         try { return JSON.parse(saved) } catch { /* ignore */ }
       }
     }
     return {
-      id: true,
-      client: true,
-      type: true,
-      designation: true,
-      cost: true,
-      versed: true,
-      remaining: true,
-      date: true,
-      status: true,
-      actions: true,
+      id: false,
+      client: false,
+      type: false,
+      designation: false,
+      cost: false,
+      versed: false,
+      remaining: false,
+      date: false,
+      status: false,
     }
   })
 
   useEffect(() => {
-    localStorage.setItem('client-projects-cols', JSON.stringify(visibleColumns))
-  }, [visibleColumns])
+    localStorage.setItem('client-projects-collapsed', JSON.stringify(collapsedColumns))
+  }, [collapsedColumns])
+
+  const renderCollapsibleHeader = (colKey: string, label: string, isRightAligned = false, isCentered = false) => {
+    const isCollapsed = collapsedColumns[colKey]
+    const toggle = (e: React.MouseEvent) => {
+      e.stopPropagation()
+      setCollapsedColumns(prev => ({ ...prev, [colKey]: !prev[colKey] }))
+    }
+
+    if (isCollapsed) {
+      return (
+        <TableHead className="px-1 py-2 text-center w-10 min-w-[40px] max-w-[40px] transition-all duration-300">
+          <button 
+            onClick={toggle}
+            type="button"
+            title={`Dérouler la colonne ${label}`}
+            className="mx-auto flex items-center justify-center p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ChevronRight size={14} />
+          </button>
+        </TableHead>
+      )
+    }
+
+    return (
+      <TableHead className={`px-4 py-3 text-xs uppercase whitespace-nowrap transition-all duration-300 ${isRightAligned ? 'text-right' : isCentered ? 'text-center' : ''}`}>
+        <div className={`flex items-center gap-1.5 ${isRightAligned ? 'justify-end' : isCentered ? 'justify-center' : 'justify-between'}`}>
+          <span>{label}</span>
+          <button 
+            onClick={toggle}
+            type="button"
+            title={`Rabattre la colonne ${label}`}
+            className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors inline-flex items-center justify-center shrink-0"
+          >
+            <ChevronLeft size={14} />
+          </button>
+        </div>
+      </TableHead>
+    )
+  }
+
+  const renderCollapsibleCell = (colKey: string, content: React.ReactNode, isRightAligned = false, className = "") => {
+    const isCollapsed = collapsedColumns[colKey]
+    if (isCollapsed) {
+      return (
+        <TableCell className="px-1 py-3 text-center w-10 min-w-[40px] max-w-[40px] transition-all duration-300 bg-muted/10" />
+      )
+    }
+    return (
+      <TableCell className={`px-4 py-3 transition-all duration-300 ${className} ${isRightAligned ? 'text-right' : ''}`}>
+        {content}
+      </TableCell>
+    )
+  }
 
   const [projects,         setProjects]         = useState<ClientProject[]>([])
   const [transactions,     setTransactions]     = useState<Transaction[]>([])
@@ -247,10 +292,10 @@ export default function ClientProjectsPage() {
       </div>
 
       {/* Toolbar */}
-      <div className="flex flex-col sm:flex-row justify-between gap-3 relative z-50">
-        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto flex-1">
-          {/* Client Combobox */}
-          <div className="relative w-full sm:w-72">
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center justify-start gap-3 relative z-50">
+        {/* Client Combobox */}
+        <div className="relative w-full sm:w-72">
              <div className="relative flex items-center">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={14} />
                 <Input 
@@ -316,130 +361,104 @@ export default function ClientProjectsPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
             <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher par projet, ID…" className="w-full pl-9" />
           </div>
-        </div>
-        <div className="flex gap-2 items-start shrink-0 flex-wrap sm:flex-nowrap">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="gap-2">
-                <Settings2 size={14} /> Colonnes
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 bg-card border rounded-xl shadow-lg p-1 z-[100]">
-              <DropdownMenuLabel className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Affichage colonnes</DropdownMenuLabel>
-              <DropdownMenuSeparator className="my-1" />
-              {Object.entries(COLUMN_LABELS).map(([key, label]) => (
-                <DropdownMenuCheckboxItem
-                  key={key}
-                  checked={visibleColumns[key as keyof typeof visibleColumns]}
-                  onCheckedChange={(checked) => {
-                    setVisibleColumns(prev => ({ ...prev, [key]: checked }))
-                  }}
-                  className="cursor-pointer rounded-lg px-2 py-1.5 text-sm hover:bg-muted/60"
-                >
-                  {label}
-                </DropdownMenuCheckboxItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button variant="outline" onClick={() => { fetchProjects(); fetchTransactions() }} className="gap-2">
-            <RefreshCw size={14} /> Actualiser
-          </Button>
-          <Button onClick={() => { setEditing(null); setModalOpen(true) }} className="gap-2">
-            <Plus size={16} /> Nouveau projet
-          </Button>
-        </div>
+
+          <div className="flex gap-2 items-center shrink-0">
+            <Button variant="outline" onClick={() => { fetchProjects(); fetchTransactions() }} className="gap-2 h-10">
+              <RefreshCw size={14} /> Actualiser
+            </Button>
+            <Button onClick={() => { setEditing(null); setModalOpen(true) }} className="gap-2 h-10">
+              <Plus size={16} /> Nouveau projet
+            </Button>
+          </div>
       </div>
 
       {/* Table */}
       <Card className="shadow-sm overflow-hidden w-full max-w-full">
         <CardContent className="p-0">
           <div className="overflow-x-auto custom-scrollbar">
-            <Table style={{ minWidth: `${Math.max(600, Object.values(visibleColumns).filter(Boolean).length * 110)}px` }} className="w-full">
+            <Table 
+              style={{ 
+                minWidth: (() => {
+                  let width = 150 // actions
+                  width += collapsedColumns.id ? 40 : 120
+                  width += collapsedColumns.client ? 40 : 180
+                  width += collapsedColumns.type ? 40 : 180
+                  width += collapsedColumns.designation ? 40 : 220
+                  width += collapsedColumns.cost ? 40 : 110
+                  width += collapsedColumns.versed ? 40 : 110
+                  width += collapsedColumns.remaining ? 40 : 110
+                  width += collapsedColumns.date ? 40 : 100
+                  width += collapsedColumns.status ? 40 : 90
+                  return `${width}px`
+                })() 
+              }} 
+              className="w-full"
+            >
               <TableHeader>
                 <TableRow>
-                  {visibleColumns.id && <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap">ID Projet</TableHead>}
-                  {visibleColumns.client && <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap">Client</TableHead>}
-                  {visibleColumns.type && <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap">Type</TableHead>}
-                  {visibleColumns.designation && <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap">Désignation</TableHead>}
-                  {visibleColumns.cost && <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap text-right">Coût Total</TableHead>}
-                  {visibleColumns.versed && <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap text-right">Versé</TableHead>}
-                  {visibleColumns.remaining && <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap text-right">Reste</TableHead>}
-                  {visibleColumns.date && <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap">Date</TableHead>}
-                  {visibleColumns.status && <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap text-center">Statut</TableHead>}
-                  {visibleColumns.actions && <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap">Actions</TableHead>}
+                  {renderCollapsibleHeader('id', 'ID Projet')}
+                  {renderCollapsibleHeader('client', 'Client')}
+                  {renderCollapsibleHeader('type', 'Type')}
+                  {renderCollapsibleHeader('designation', 'Désignation')}
+                  {renderCollapsibleHeader('cost', 'Coût Total', true)}
+                  {renderCollapsibleHeader('versed', 'Versé', true)}
+                  {renderCollapsibleHeader('remaining', 'Reste', true)}
+                  {renderCollapsibleHeader('date', 'Date')}
+                  {renderCollapsibleHeader('status', 'Statut', false, true)}
+                  <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredByClient.length === 0
-                  ? <TableRow><TableCell colSpan={Object.values(visibleColumns).filter(Boolean).length} className="text-center py-12 text-muted-foreground">Aucun projet client.</TableCell></TableRow>
+                  ? <TableRow><TableCell colSpan={10} className="text-center py-12 text-muted-foreground">Aucun projet client.</TableCell></TableRow>
                   : filteredByClient.map((p) => {
                     const versed = versedTotal(p.id)
                     const rest   = (p.total ?? 0) - versed
                     return (
                       <TableRow key={p.id} className="hover:bg-muted/30">
-                        {visibleColumns.id && <TableCell className="px-4 py-3 font-mono text-xs font-semibold whitespace-nowrap">{p.custom_id}</TableCell>}
-                        {visibleColumns.client && (
-                          <TableCell className="px-4 py-3 whitespace-nowrap">
+                        {renderCollapsibleCell('id', p.custom_id, false, "font-mono text-xs font-semibold whitespace-nowrap")}
+                        {renderCollapsibleCell('client', (
+                          <>
                             <p className="font-semibold text-sm">{p.client_name || '—'}</p>
                             <p className="text-xs text-muted-foreground">{p.client_code}</p>
-                          </TableCell>
-                        )}
-                        {visibleColumns.type && (
-                          <TableCell className="px-4 py-3 whitespace-nowrap">
-                            <span className={`text-xs font-medium px-2 py-1 rounded-full ${TYPE_COLORS[p.type] ?? TYPE_COLORS['Autre']}`}>{p.type}</span>
-                          </TableCell>
-                        )}
-                        {visibleColumns.designation && <TableCell className="px-4 py-3 text-sm max-w-xs truncate">{p.designation}</TableCell>}
-                        {visibleColumns.cost && (
-                          <TableCell className="px-4 py-3 text-sm font-semibold text-right whitespace-nowrap">
-                            {p.total ? fmt(p.total) : '—'}
-                          </TableCell>
-                        )}
-                        {visibleColumns.versed && (
-                          <TableCell className="px-4 py-3 text-sm text-right whitespace-nowrap text-blue-400 font-semibold">
-                            {versed > 0 ? fmt(versed) : '—'}
-                          </TableCell>
-                        )}
-                        {visibleColumns.remaining && (
-                          <TableCell className="px-4 py-3 text-sm text-right whitespace-nowrap font-bold">
-                            <span className={rest > 0 ? 'text-red-400' : rest === 0 && versed > 0 ? 'text-emerald-400' : 'text-muted-foreground'}>
-                              {p.total ? fmt(rest) : '—'}
-                            </span>
-                          </TableCell>
-                        )}
-                        {visibleColumns.date && (
-                          <TableCell className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">
-                            {p.date ? new Date(p.date).toLocaleDateString('fr-FR') : '—'}
-                          </TableCell>
-                        )}
-                        {visibleColumns.status && (
-                          <TableCell className="px-4 py-3 text-center">
-                            <Badge variant={p.status === 'actif' ? 'default' : 'secondary'} className="text-xs">
-                              {p.status === 'actif' ? 'Actif' : p.status}
-                            </Badge>
-                          </TableCell>
-                        )}
-                        {visibleColumns.actions && (
-                          <TableCell className="px-4 py-3">
-                            <div className="flex items-center gap-0.5">
-                              <Button size="icon" variant="ghost" className="h-7 w-7 text-emerald-400 hover:text-emerald-300" title="Versement" onClick={() => setPaymentProject(p)}>
-                                <DollarSign size={14} />
-                              </Button>
-                              <Button size="icon" variant="ghost" className="h-7 w-7 text-blue-400 hover:text-blue-300" title="Documents / Reçu" aria-label="Voir la facture" onClick={() => setDocProject(p)}>
-                                <Printer size={14} />
-                              </Button>
-                              <Button size="icon" variant="ghost" className="h-7 w-7" title="Détails" aria-label="Voir le projet" onClick={() => setViewing(p)}>
-                                <Eye size={14} />
-                              </Button>
-                              <Button size="icon" variant="ghost" className="h-7 w-7" title="Modifier" aria-label="Modifier le projet" onClick={() => { setEditing(p); setModalOpen(true) }}>
-                                <Edit2 size={14} />
-                              </Button>
-                              <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" title="Supprimer" aria-label="Supprimer le projet" onClick={() => deleteProject(p.id)}>
-                                <Trash2 size={14} />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        )}
+                          </>
+                        ))}
+                        {renderCollapsibleCell('type', (
+                          <span className={`text-xs font-medium px-2 py-1 rounded-full ${TYPE_COLORS[p.type] ?? TYPE_COLORS['Autre']}`}>{p.type}</span>
+                        ))}
+                        {renderCollapsibleCell('designation', p.designation, false, "text-sm max-w-xs truncate")}
+                        {renderCollapsibleCell('cost', p.total ? fmt(p.total) : '—', true, "text-sm font-semibold")}
+                        {renderCollapsibleCell('versed', versed > 0 ? fmt(versed) : '—', true, "text-sm text-blue-400 font-semibold")}
+                        {renderCollapsibleCell('remaining', (
+                          <span className={rest > 0 ? 'text-red-400' : rest === 0 && versed > 0 ? 'text-emerald-400' : 'text-muted-foreground'}>
+                            {p.total ? fmt(rest) : '—'}
+                          </span>
+                        ), true, "text-sm font-bold")}
+                        {renderCollapsibleCell('date', p.date ? new Date(p.date).toLocaleDateString('fr-FR') : '—', false, "text-sm text-muted-foreground")}
+                        {renderCollapsibleCell('status', (
+                          <Badge variant={p.status === 'actif' ? 'default' : 'secondary'} className="text-xs">
+                            {p.status === 'actif' ? 'Actif' : p.status}
+                          </Badge>
+                        ), false, "text-center")}
+                        <TableCell className="px-4 py-3">
+                          <div className="flex items-center gap-0.5">
+                            <Button size="icon" variant="ghost" className="h-7 w-7 text-emerald-400 hover:text-emerald-300" title="Versement" onClick={() => setPaymentProject(p)}>
+                              <DollarSign size={14} />
+                            </Button>
+                            <Button size="icon" variant="ghost" className="h-7 w-7 text-blue-400 hover:text-blue-300" title="Documents / Reçu" aria-label="Voir la facture" onClick={() => setDocProject(p)}>
+                              <Printer size={14} />
+                            </Button>
+                            <Button size="icon" variant="ghost" className="h-7 w-7" title="Détails" aria-label="Voir le projet" onClick={() => setViewing(p)}>
+                              <Eye size={14} />
+                            </Button>
+                            <Button size="icon" variant="ghost" className="h-7 w-7" title="Modifier" aria-label="Modifier le projet" onClick={() => { setEditing(p); setModalOpen(true) }}>
+                              <Edit2 size={14} />
+                            </Button>
+                            <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" title="Supprimer" aria-label="Supprimer le projet" onClick={() => deleteProject(p.id)}>
+                              <Trash2 size={14} />
+                            </Button>
+                          </div>
+                        </TableCell>
                       </TableRow>
                     )
                   })}
