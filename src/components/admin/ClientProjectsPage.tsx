@@ -375,96 +375,94 @@ export default function ClientProjectsPage() {
       {/* Table */}
       <Card className="shadow-sm overflow-hidden w-full max-w-full">
         <CardContent className="p-0">
-          <div className="overflow-x-auto custom-scrollbar">
-            <Table 
-              style={{ 
-                minWidth: (() => {
-                  let width = 150 // actions
-                  width += collapsedColumns.id ? 40 : 120
-                  width += collapsedColumns.client ? 40 : 180
-                  width += collapsedColumns.type ? 40 : 180
-                  width += collapsedColumns.designation ? 40 : 220
-                  width += collapsedColumns.cost ? 40 : 110
-                  width += collapsedColumns.versed ? 40 : 110
-                  width += collapsedColumns.remaining ? 40 : 110
-                  width += collapsedColumns.date ? 40 : 100
-                  width += collapsedColumns.status ? 40 : 90
-                  return `${width}px`
-                })() 
-              }} 
-              className="w-full"
-            >
-              <TableHeader>
-                <TableRow>
-                  {renderCollapsibleHeader('id', 'ID Projet')}
-                  {renderCollapsibleHeader('client', 'Client')}
-                  {renderCollapsibleHeader('type', 'Type')}
-                  {renderCollapsibleHeader('designation', 'Désignation')}
-                  {renderCollapsibleHeader('cost', 'Coût Total', true)}
-                  {renderCollapsibleHeader('versed', 'Versé', true)}
-                  {renderCollapsibleHeader('remaining', 'Reste', true)}
-                  {renderCollapsibleHeader('date', 'Date')}
-                  {renderCollapsibleHeader('status', 'Statut', false, true)}
-                  <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredByClient.length === 0
-                  ? <TableRow><TableCell colSpan={10} className="text-center py-12 text-muted-foreground">Aucun projet client.</TableCell></TableRow>
-                  : filteredByClient.map((p) => {
-                    const versed = versedTotal(p.id)
-                    const rest   = (p.total ?? 0) - versed
-                    return (
-                      <TableRow key={p.id} className="hover:bg-muted/30">
-                        {renderCollapsibleCell('id', p.custom_id, false, "font-mono text-xs font-semibold whitespace-nowrap")}
-                        {renderCollapsibleCell('client', (
-                          <>
-                            <p className="font-semibold text-sm">{p.client_name || '—'}</p>
-                            <p className="text-xs text-muted-foreground">{p.client_code}</p>
-                          </>
-                        ))}
-                        {renderCollapsibleCell('type', (
-                          <span className={`text-xs font-medium px-2 py-1 rounded-full ${TYPE_COLORS[p.type] ?? TYPE_COLORS['Autre']}`}>{p.type}</span>
-                        ))}
-                        {renderCollapsibleCell('designation', p.designation, false, "text-sm max-w-xs truncate")}
-                        {renderCollapsibleCell('cost', p.total ? fmt(p.total) : '—', true, "text-sm font-semibold")}
-                        {renderCollapsibleCell('versed', versed > 0 ? fmt(versed) : '—', true, "text-sm text-blue-400 font-semibold")}
-                        {renderCollapsibleCell('remaining', (
-                          <span className={rest > 0 ? 'text-red-400' : rest === 0 && versed > 0 ? 'text-emerald-400' : 'text-muted-foreground'}>
-                            {p.total ? fmt(rest) : '—'}
-                          </span>
-                        ), true, "text-sm font-bold")}
-                        {renderCollapsibleCell('date', p.date ? new Date(p.date).toLocaleDateString('fr-FR') : '—', false, "text-sm text-muted-foreground")}
-                        {renderCollapsibleCell('status', (
-                          <Badge variant={p.status === 'actif' ? 'default' : 'secondary'} className="text-xs">
-                            {p.status === 'actif' ? 'Actif' : p.status}
-                          </Badge>
-                        ), false, "text-center")}
-                        <TableCell className="px-4 py-3">
-                          <div className="flex items-center gap-0.5">
-                            <Button size="icon" variant="ghost" className="h-7 w-7 text-emerald-400 hover:text-emerald-300" title="Versement" onClick={() => setPaymentProject(p)}>
-                              <DollarSign size={14} />
-                            </Button>
-                            <Button size="icon" variant="ghost" className="h-7 w-7 text-blue-400 hover:text-blue-300" title="Documents / Reçu" aria-label="Voir la facture" onClick={() => setDocProject(p)}>
-                              <Printer size={14} />
-                            </Button>
-                            <Button size="icon" variant="ghost" className="h-7 w-7" title="Détails" aria-label="Voir le projet" onClick={() => setViewing(p)}>
-                              <Eye size={14} />
-                            </Button>
-                            <Button size="icon" variant="ghost" className="h-7 w-7" title="Modifier" aria-label="Modifier le projet" onClick={() => { setEditing(p); setModalOpen(true) }}>
-                              <Edit2 size={14} />
-                            </Button>
-                            <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" title="Supprimer" aria-label="Supprimer le projet" onClick={() => deleteProject(p.id)}>
-                              <Trash2 size={14} />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
-              </TableBody>
-            </Table>
-          </div>
+          <Table 
+            style={{ 
+              minWidth: (() => {
+                let width = 150 // actions
+                width += collapsedColumns.id ? 40 : 120
+                width += collapsedColumns.client ? 40 : 180
+                width += collapsedColumns.type ? 40 : 180
+                width += collapsedColumns.designation ? 40 : 220
+                width += collapsedColumns.cost ? 40 : 110
+                width += collapsedColumns.versed ? 40 : 110
+                width += collapsedColumns.remaining ? 40 : 110
+                width += collapsedColumns.date ? 40 : 100
+                width += collapsedColumns.status ? 40 : 90
+                return `${width}px`
+              })() 
+            }} 
+            className="w-full"
+          >
+            <TableHeader>
+              <TableRow>
+                {renderCollapsibleHeader('id', 'ID Projet')}
+                {renderCollapsibleHeader('client', 'Client')}
+                {renderCollapsibleHeader('type', 'Type')}
+                {renderCollapsibleHeader('designation', 'Désignation')}
+                {renderCollapsibleHeader('cost', 'Coût Total', true)}
+                {renderCollapsibleHeader('versed', 'Versé', true)}
+                {renderCollapsibleHeader('remaining', 'Reste', true)}
+                {renderCollapsibleHeader('date', 'Date')}
+                {renderCollapsibleHeader('status', 'Statut', false, true)}
+                <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredByClient.length === 0
+                ? <TableRow><TableCell colSpan={10} className="text-center py-12 text-muted-foreground">Aucun projet client.</TableCell></TableRow>
+                : filteredByClient.map((p) => {
+                  const versed = versedTotal(p.id)
+                  const rest   = (p.total ?? 0) - versed
+                  return (
+                    <TableRow key={p.id} className="hover:bg-muted/30">
+                      {renderCollapsibleCell('id', p.custom_id, false, "font-mono text-xs font-semibold whitespace-nowrap")}
+                      {renderCollapsibleCell('client', (
+                        <>
+                          <p className="font-semibold text-sm">{p.client_name || '—'}</p>
+                          <p className="text-xs text-muted-foreground">{p.client_code}</p>
+                        </>
+                      ))}
+                      {renderCollapsibleCell('type', (
+                        <span className={`text-xs font-medium px-2 py-1 rounded-full ${TYPE_COLORS[p.type] ?? TYPE_COLORS['Autre']}`}>{p.type}</span>
+                      ))}
+                      {renderCollapsibleCell('designation', p.designation, false, "text-sm max-w-xs truncate")}
+                      {renderCollapsibleCell('cost', p.total ? fmt(p.total) : '—', true, "text-sm font-semibold")}
+                      {renderCollapsibleCell('versed', versed > 0 ? fmt(versed) : '—', true, "text-sm text-blue-400 font-semibold")}
+                      {renderCollapsibleCell('remaining', (
+                        <span className={rest > 0 ? 'text-red-400' : rest === 0 && versed > 0 ? 'text-emerald-400' : 'text-muted-foreground'}>
+                          {p.total ? fmt(rest) : '—'}
+                        </span>
+                      ), true, "text-sm font-bold")}
+                      {renderCollapsibleCell('date', p.date ? new Date(p.date).toLocaleDateString('fr-FR') : '—', false, "text-sm text-muted-foreground")}
+                      {renderCollapsibleCell('status', (
+                        <Badge variant={p.status === 'actif' ? 'default' : 'secondary'} className="text-xs">
+                          {p.status === 'actif' ? 'Actif' : p.status}
+                        </Badge>
+                      ), false, "text-center")}
+                      <TableCell className="px-4 py-3">
+                        <div className="flex items-center gap-0.5">
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-emerald-400 hover:text-emerald-300" title="Versement" onClick={() => setPaymentProject(p)}>
+                            <DollarSign size={14} />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-blue-400 hover:text-blue-300" title="Documents / Reçu" aria-label="Voir la facture" onClick={() => setDocProject(p)}>
+                            <Printer size={14} />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7" title="Détails" aria-label="Voir le projet" onClick={() => setViewing(p)}>
+                            <Eye size={14} />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7" title="Modifier" aria-label="Modifier le projet" onClick={() => { setEditing(p); setModalOpen(true) }}>
+                            <Edit2 size={14} />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" title="Supprimer" aria-label="Supprimer le projet" onClick={() => deleteProject(p.id)}>
+                            <Trash2 size={14} />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
 
@@ -1086,7 +1084,7 @@ Exemple :
 Saisie : "batiment r+1"
 Retour : Projet de construction d'un bâtiment R+1 à usage d'habitation`
 
-const STORAGE_KEY = 'ngbureau_project_models'
+const STORAGE_KEY = 'ngbureau_doc_models'
 
 function ProjectFormModal({ editing, initialClientId, clients, invoices, proformaInvoices, onClose, onSaved }: {
   editing: ClientProject | null; initialClientId?: string; clients: ClientOption[]; invoices: InvoiceOption[]
@@ -1192,15 +1190,43 @@ function ProjectFormModal({ editing, initialClientId, clients, invoices, proform
 
   // Models
   function collectFormData() {
-    return { type, designation, date, items, tva_rate: tva, notes, invoice_type: invoiceType }
+    return { 
+      type: invoiceType, 
+      number: '', 
+      client_name: '', 
+      client_email: '', 
+      client_phone: '', 
+      client_address: '', 
+      date, 
+      due_date: date, 
+      objet: designation, 
+      items, 
+      tva_rate: tva, 
+      notes, 
+      invoice_type: invoiceType,
+      project_type: type
+    }
   }
   function applyFormData(data: any) {
-    if (data.type) setType(data.type)
+    if (data.project_type) setType(data.project_type)
+    else if (data.type && !['Facture', 'Devis', 'Facture Proforma'].includes(data.type)) setType(data.type)
+
     if (data.designation) setDesignation(data.designation)
+    else if (data.objet) setDesignation(data.objet)
+
     if (data.tva_rate) setTva(data.tva_rate)
     if (data.notes) setNotes(data.notes)
+
     if (data.invoice_type) setInvoiceType(data.invoice_type)
-    if (Array.isArray(data.items) && data.items.length) setItems(data.items)
+    else if (data.type && ['Facture', 'Devis', 'Facture Proforma'].includes(data.type)) setInvoiceType(data.type)
+
+    if (Array.isArray(data.items) && data.items.length) {
+      setItems(data.items.map((i: any) => ({
+        desc: i.desc || i.description || '',
+        qty: Number(i.qty) || 1,
+        price: Number(i.price) || 0
+      })))
+    }
   }
   function getSavedModels() {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]') } catch { return [] }
@@ -1539,8 +1565,8 @@ function ProjectFormModal({ editing, initialClientId, clients, invoices, proform
                         <div key={i} className="flex items-center justify-between p-3 border rounded-xl hover:bg-muted/50 transition-colors">
                           <button type="button" onClick={() => { applyFormData(m.data); setShowModels(false) }} className="flex-1 text-left">
                             <p className="font-bold text-sm">{m.name}</p>
-                            <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-[250px]">
-                              {m.data.designation || 'Sans désignation'} • {m.data.items?.length || 0} article(s)
+                            <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-[280px]">
+                              <span className="font-semibold text-foreground">{m.data.invoice_type || m.data.type || 'Facture'}</span> • {m.data.designation || m.data.objet || 'Sans désignation'} • {m.data.items?.length || 0} article(s)
                             </p>
                           </button>
                           <button type="button" onClick={() => deleteModel(i)} className="p-2 text-muted-foreground hover:text-destructive rounded-lg transition-colors">
