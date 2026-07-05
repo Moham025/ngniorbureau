@@ -8,28 +8,69 @@ export async function GET() {
       { data: products },
       { data: documents },
       { data: { users } },
+      { data: clientProjects },
+      { data: projectTransactions },
     ] = await Promise.all([
       supabaseAdmin.from('projects').select('id, is_active'),
       supabaseAdmin.from('products').select('id, stock'),
       supabaseAdmin.from('documents').select('id, status, total, type, created_at'),
       supabaseAuthAdmin.auth.admin.listUsers({ perPage: 1000 }),
+      supabaseAdmin.from('client_projects').select('id, invoice_id, date, created_at'),
+      supabaseAdmin.from('project_transactions').select('amount, date, created_at'),
     ])
 
     const now = new Date()
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+    const currentYear = now.getFullYear()
+    const currentMonth = now.getMonth()
 
-    const monthlyDocs = (documents ?? []).filter((d) => new Date(d.created_at) >= startOfMonth)
-    const monthlyRevenue = monthlyDocs
-      .filter((d) => d.status === 'payee' || d.status === 'paid')
-      .reduce((sum, d) => sum + (d.total ?? 0), 0)
+    const isCurrentMonth = (dateStr?: string | null, createdAtStr?: string | null) => {
+      let d: Date
+      if (dateStr) {
+        d = new Date(dateStr)
+      } else if (createdAtStr) {
+        d = new Date(createdAtStr)
+      } else {
+        return false
+      }
+      return d.getFullYear() === currentYear && d.getMonth() === currentMonth
+    }
 
-    const newClientsThisMonth = users.filter((u) => new Date(u.created_at) >= startOfMonth).length
+    // 1. Chiffre d'affaires du mois (Versements)
+    const monthlyRevenue = (projectTransactions ?? [])
+      .filter((t) => isCurrentMonth(t.date, t.created_at))
+      .reduce((sum, t) => sum + (t.amount ?? 0), 0)
+
+    // 2. Projets du mois (Coût total)
+    const invoiceTotals: Record<string, number> = {}
+    const invoiceIds = (clientProjects ?? []).map((p) => p.invoice_id).filter(Boolean)
+    if (invoiceIds.length > 0) {
+      const { data: invoices } = await supabaseAdmin
+        .from('documents')
+        .select('id, total')
+        .in('id', invoiceIds)
+      for (const inv of invoices ?? []) {
+        invoiceTotals[inv.id] = inv.total ?? 0
+      }
+    }
+
+    const monthlyProjects = (clientProjects ?? []).filter((p) => isCurrentMonth(p.date, p.created_at))
+    const monthlyProjectCosts = monthlyProjects.reduce((sum, p) => {
+      const total = p.invoice_id ? (invoiceTotals[p.invoice_id] ?? 0) : 0
+      return sum + total
+    }, 0)
+
+    const newClientsThisMonth = users.filter((u) => new Date(u.created_at) >= new Date(currentYear, currentMonth, 1)).length
     const premiumUsers = users.filter((u) => u.app_metadata?.plan === 'premium').length
 
     return NextResponse.json({
       success: true,
       data: {
         monthlyRevenue: { value: monthlyRevenue.toLocaleString('fr-FR'), currency: 'FCFA' },
+        monthlyProjectCosts: { 
+          value: monthlyProjectCosts.toLocaleString('fr-FR'), 
+          count: monthlyProjects.length,
+          currency: 'FCFA' 
+        },
         newClients: { value: newClientsThisMonth },
         totalClients: { value: users.length, premium: premiumUsers, free: users.length - premiumUsers },
         totalProjects: {

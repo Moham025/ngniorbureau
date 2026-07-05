@@ -6,7 +6,7 @@ import {
   Search, RefreshCw, CheckCircle, XCircle, LayoutDashboard,
   Settings, Moon, Sun, Plus, UploadCloud, Edit2, Trash2,
   TrendingUp, Activity, Box, Loader2, AlertCircle,
-  X, Save, Bot, Settings2, Eye, ChevronLeft, ChevronRight,
+  X, Save, Bot, Settings2, Eye, ChevronLeft, ChevronRight, DollarSign,
 } from 'lucide-react'
 import { Button }   from '@/components/ui/button'
 import { Input }    from '@/components/ui/input'
@@ -36,6 +36,7 @@ function fmtPrice(n: number | null | undefined) { return n != null ? n.toLocaleS
 
 interface DashboardStats {
   monthlyRevenue: { value: string; currency: string }
+  monthlyProjectCosts: { value: string; count: number; currency: string }
   newClients: { value: number }
   totalClients: { value: number; premium: number; free: number }
   totalProjects: { value: number; active: number; draft: number }
@@ -192,13 +193,32 @@ export default function AdminDashboard() {
 
   const renderDashboard = () => (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
-          { label: 'Revenus du mois', value: stats ? `${stats.monthlyRevenue.value} FCFA` : '—', icon: TrendingUp },
-          { label: 'Clients ce mois', value: stats ? `+${stats.newClients.value}` : '—', icon: Users,
-            sub: stats ? `${stats.totalClients.premium} premium / ${stats.totalClients.free} gratuits` : '' },
-          { label: 'Projets actifs', value: stats?.totalProjects.active ?? '—', icon: Box,
-            sub: stats ? `${stats.totalProjects.draft} brouillons` : '' },
+          { 
+            label: "Chiffre d'affaires (Versements)", 
+            value: stats ? `${stats.monthlyRevenue.value} FCFA` : '—', 
+            icon: TrendingUp,
+            sub: 'Cumul des versements ce mois'
+          },
+          { 
+            label: "Projets du mois (Coût total)", 
+            value: stats ? `${stats.monthlyProjectCosts.value} FCFA` : '—', 
+            icon: DollarSign,
+            sub: stats ? `${stats.monthlyProjectCosts.count} nouveau(x) projet(s)` : ''
+          },
+          { 
+            label: 'Clients ce mois', 
+            value: stats ? `+${stats.newClients.value}` : '—', 
+            icon: Users,
+            sub: stats ? `${stats.totalClients.premium} premium / ${stats.totalClients.free} gratuits` : '' 
+          },
+          { 
+            label: 'Projets actifs', 
+            value: stats?.totalProjects.active ?? '—', 
+            icon: Box,
+            sub: stats ? `${stats.totalProjects.draft} brouillons` : '' 
+          },
         ].map(({ label, value, icon: Icon, sub }) => (
           <Card key={label} className="shadow-sm hover:shadow-md transition-shadow">
             <CardContent className="p-6">
@@ -206,8 +226,8 @@ export default function AdminDashboard() {
                 <span className="text-sm font-medium text-muted-foreground">{label}</span>
                 <Icon size={20} className="text-foreground" />
               </div>
-              <span className="text-3xl font-bold">{value}</span>
-              {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
+              <span className="text-2xl font-bold tracking-tight">{value}</span>
+              {sub && <p className="text-xs text-muted-foreground mt-1.5">{sub}</p>}
             </CardContent>
           </Card>
         ))}
