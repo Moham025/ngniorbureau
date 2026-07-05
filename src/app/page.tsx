@@ -655,8 +655,8 @@ export default function AdminDashboard() {
             </Button>
           </div>
         </header>
-        <ScrollArea className="flex-1">
-          <div className="px-6 md:px-8 py-8">{renderContent()}</div>
+        <ScrollArea className="flex-1 w-full max-w-full">
+          <div className="px-6 md:px-8 py-8 w-full max-w-full min-w-0">{renderContent()}</div>
         </ScrollArea>
       </main>
 

@@ -11,6 +11,14 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -76,8 +84,46 @@ function numToWords(n: number): string {
   return r.trim()
 }
 
+const COLUMN_LABELS = {
+  id: 'ID Projet',
+  client: 'Client',
+  type: 'Type',
+  designation: 'Désignation',
+  cost: 'Coût Total',
+  versed: 'Versé',
+  remaining: 'Reste',
+  date: 'Date',
+  status: 'Statut',
+  actions: 'Actions',
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function ClientProjectsPage() {
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('client-projects-cols')
+      if (saved) {
+        try { return JSON.parse(saved) } catch { /* ignore */ }
+      }
+    }
+    return {
+      id: true,
+      client: true,
+      type: true,
+      designation: true,
+      cost: true,
+      versed: true,
+      remaining: true,
+      date: true,
+      status: true,
+      actions: true,
+    }
+  })
+
+  useEffect(() => {
+    localStorage.setItem('client-projects-cols', JSON.stringify(visibleColumns))
+  }, [visibleColumns])
+
   const [projects,         setProjects]         = useState<ClientProject[]>([])
   const [transactions,     setTransactions]     = useState<Transaction[]>([])
   const [clients,          setClients]          = useState<ClientOption[]>([])
@@ -271,7 +317,30 @@ export default function ClientProjectsPage() {
             <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher par projet, ID…" className="w-full pl-9" />
           </div>
         </div>
-        <div className="flex gap-2 items-start shrink-0">
+        <div className="flex gap-2 items-start shrink-0 flex-wrap sm:flex-nowrap">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="gap-2">
+                <Settings2 size={14} /> Colonnes
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56 bg-card border rounded-xl shadow-lg p-1 z-[100]">
+              <DropdownMenuLabel className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Affichage colonnes</DropdownMenuLabel>
+              <DropdownMenuSeparator className="my-1" />
+              {Object.entries(COLUMN_LABELS).map(([key, label]) => (
+                <DropdownMenuCheckboxItem
+                  key={key}
+                  checked={visibleColumns[key as keyof typeof visibleColumns]}
+                  onCheckedChange={(checked) => {
+                    setVisibleColumns(prev => ({ ...prev, [key]: checked }))
+                  }}
+                  className="cursor-pointer rounded-lg px-2 py-1.5 text-sm hover:bg-muted/60"
+                >
+                  {label}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button variant="outline" onClick={() => { fetchProjects(); fetchTransactions() }} className="gap-2">
             <RefreshCw size={14} /> Actualiser
           </Button>
@@ -282,79 +351,95 @@ export default function ClientProjectsPage() {
       </div>
 
       {/* Table */}
-      <Card className="shadow-sm overflow-hidden">
+      <Card className="shadow-sm overflow-hidden w-full max-w-full">
         <CardContent className="p-0">
           <div className="overflow-x-auto custom-scrollbar">
-            <Table className="min-w-[1100px]">
+            <Table style={{ minWidth: `${Math.max(600, Object.values(visibleColumns).filter(Boolean).length * 110)}px` }} className="w-full">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap">ID Projet</TableHead>
-                  <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap">Client</TableHead>
-                  <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap">Type</TableHead>
-                  <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap">Désignation</TableHead>
-                  <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap text-right">Coût Total</TableHead>
-                  <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap text-right">Versé</TableHead>
-                  <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap text-right">Reste</TableHead>
-                  <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap">Date</TableHead>
-                  <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap text-center">Statut</TableHead>
-                  <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap">Actions</TableHead>
+                  {visibleColumns.id && <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap">ID Projet</TableHead>}
+                  {visibleColumns.client && <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap">Client</TableHead>}
+                  {visibleColumns.type && <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap">Type</TableHead>}
+                  {visibleColumns.designation && <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap">Désignation</TableHead>}
+                  {visibleColumns.cost && <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap text-right">Coût Total</TableHead>}
+                  {visibleColumns.versed && <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap text-right">Versé</TableHead>}
+                  {visibleColumns.remaining && <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap text-right">Reste</TableHead>}
+                  {visibleColumns.date && <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap">Date</TableHead>}
+                  {visibleColumns.status && <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap text-center">Statut</TableHead>}
+                  {visibleColumns.actions && <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredByClient.length === 0
-                  ? <TableRow><TableCell colSpan={10} className="text-center py-12 text-muted-foreground">Aucun projet client.</TableCell></TableRow>
+                  ? <TableRow><TableCell colSpan={Object.values(visibleColumns).filter(Boolean).length} className="text-center py-12 text-muted-foreground">Aucun projet client.</TableCell></TableRow>
                   : filteredByClient.map((p) => {
                     const versed = versedTotal(p.id)
                     const rest   = (p.total ?? 0) - versed
                     return (
                       <TableRow key={p.id} className="hover:bg-muted/30">
-                        <TableCell className="px-4 py-3 font-mono text-xs font-semibold whitespace-nowrap">{p.custom_id}</TableCell>
-                        <TableCell className="px-4 py-3 whitespace-nowrap">
-                          <p className="font-semibold text-sm">{p.client_name || '—'}</p>
-                          <p className="text-xs text-muted-foreground">{p.client_code}</p>
-                        </TableCell>
-                        <TableCell className="px-4 py-3 whitespace-nowrap">
-                          <span className={`text-xs font-medium px-2 py-1 rounded-full ${TYPE_COLORS[p.type] ?? TYPE_COLORS['Autre']}`}>{p.type}</span>
-                        </TableCell>
-                        <TableCell className="px-4 py-3 text-sm max-w-xs truncate">{p.designation}</TableCell>
-                        <TableCell className="px-4 py-3 text-sm font-semibold text-right whitespace-nowrap">
-                          {p.total ? fmt(p.total) : '—'}
-                        </TableCell>
-                        <TableCell className="px-4 py-3 text-sm text-right whitespace-nowrap text-blue-400 font-semibold">
-                          {versed > 0 ? fmt(versed) : '—'}
-                        </TableCell>
-                        <TableCell className="px-4 py-3 text-sm text-right whitespace-nowrap font-bold">
-                          <span className={rest > 0 ? 'text-red-400' : rest === 0 && versed > 0 ? 'text-emerald-400' : 'text-muted-foreground'}>
-                            {p.total ? fmt(rest) : '—'}
-                          </span>
-                        </TableCell>
-                        <TableCell className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">
-                          {p.date ? new Date(p.date).toLocaleDateString('fr-FR') : '—'}
-                        </TableCell>
-                        <TableCell className="px-4 py-3 text-center">
-                          <Badge variant={p.status === 'actif' ? 'default' : 'secondary'} className="text-xs">
-                            {p.status === 'actif' ? 'Actif' : p.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="px-4 py-3">
-                          <div className="flex items-center gap-0.5">
-                            <Button size="icon" variant="ghost" className="h-7 w-7 text-emerald-400 hover:text-emerald-300" title="Versement" onClick={() => setPaymentProject(p)}>
-                              <DollarSign size={14} />
-                            </Button>
-                            <Button size="icon" variant="ghost" className="h-7 w-7 text-blue-400 hover:text-blue-300" title="Documents / Reçu" aria-label="Voir la facture" onClick={() => setDocProject(p)}>
-                              <Printer size={14} />
-                            </Button>
-                            <Button size="icon" variant="ghost" className="h-7 w-7" title="Détails" aria-label="Voir le projet" onClick={() => setViewing(p)}>
-                              <Eye size={14} />
-                            </Button>
-                            <Button size="icon" variant="ghost" className="h-7 w-7" title="Modifier" aria-label="Modifier le projet" onClick={() => { setEditing(p); setModalOpen(true) }}>
-                              <Edit2 size={14} />
-                            </Button>
-                            <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" title="Supprimer" aria-label="Supprimer le projet" onClick={() => deleteProject(p.id)}>
-                              <Trash2 size={14} />
-                            </Button>
-                          </div>
-                        </TableCell>
+                        {visibleColumns.id && <TableCell className="px-4 py-3 font-mono text-xs font-semibold whitespace-nowrap">{p.custom_id}</TableCell>}
+                        {visibleColumns.client && (
+                          <TableCell className="px-4 py-3 whitespace-nowrap">
+                            <p className="font-semibold text-sm">{p.client_name || '—'}</p>
+                            <p className="text-xs text-muted-foreground">{p.client_code}</p>
+                          </TableCell>
+                        )}
+                        {visibleColumns.type && (
+                          <TableCell className="px-4 py-3 whitespace-nowrap">
+                            <span className={`text-xs font-medium px-2 py-1 rounded-full ${TYPE_COLORS[p.type] ?? TYPE_COLORS['Autre']}`}>{p.type}</span>
+                          </TableCell>
+                        )}
+                        {visibleColumns.designation && <TableCell className="px-4 py-3 text-sm max-w-xs truncate">{p.designation}</TableCell>}
+                        {visibleColumns.cost && (
+                          <TableCell className="px-4 py-3 text-sm font-semibold text-right whitespace-nowrap">
+                            {p.total ? fmt(p.total) : '—'}
+                          </TableCell>
+                        )}
+                        {visibleColumns.versed && (
+                          <TableCell className="px-4 py-3 text-sm text-right whitespace-nowrap text-blue-400 font-semibold">
+                            {versed > 0 ? fmt(versed) : '—'}
+                          </TableCell>
+                        )}
+                        {visibleColumns.remaining && (
+                          <TableCell className="px-4 py-3 text-sm text-right whitespace-nowrap font-bold">
+                            <span className={rest > 0 ? 'text-red-400' : rest === 0 && versed > 0 ? 'text-emerald-400' : 'text-muted-foreground'}>
+                              {p.total ? fmt(rest) : '—'}
+                            </span>
+                          </TableCell>
+                        )}
+                        {visibleColumns.date && (
+                          <TableCell className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">
+                            {p.date ? new Date(p.date).toLocaleDateString('fr-FR') : '—'}
+                          </TableCell>
+                        )}
+                        {visibleColumns.status && (
+                          <TableCell className="px-4 py-3 text-center">
+                            <Badge variant={p.status === 'actif' ? 'default' : 'secondary'} className="text-xs">
+                              {p.status === 'actif' ? 'Actif' : p.status}
+                            </Badge>
+                          </TableCell>
+                        )}
+                        {visibleColumns.actions && (
+                          <TableCell className="px-4 py-3">
+                            <div className="flex items-center gap-0.5">
+                              <Button size="icon" variant="ghost" className="h-7 w-7 text-emerald-400 hover:text-emerald-300" title="Versement" onClick={() => setPaymentProject(p)}>
+                                <DollarSign size={14} />
+                              </Button>
+                              <Button size="icon" variant="ghost" className="h-7 w-7 text-blue-400 hover:text-blue-300" title="Documents / Reçu" aria-label="Voir la facture" onClick={() => setDocProject(p)}>
+                                <Printer size={14} />
+                              </Button>
+                              <Button size="icon" variant="ghost" className="h-7 w-7" title="Détails" aria-label="Voir le projet" onClick={() => setViewing(p)}>
+                                <Eye size={14} />
+                              </Button>
+                              <Button size="icon" variant="ghost" className="h-7 w-7" title="Modifier" aria-label="Modifier le projet" onClick={() => { setEditing(p); setModalOpen(true) }}>
+                                <Edit2 size={14} />
+                              </Button>
+                              <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" title="Supprimer" aria-label="Supprimer le projet" onClick={() => deleteProject(p.id)}>
+                                <Trash2 size={14} />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        )}
                       </TableRow>
                     )
                   })}
