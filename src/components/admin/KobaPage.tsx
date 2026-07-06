@@ -196,25 +196,19 @@ export default function KobaPage() {
       // Fetch project collaborators to check if shared
       const { data: pcData } = await kobaSupabase.from('projet_collaborators').select('projet_id, user_id, role')
 
-      const walletCollabCount: Record<string, number> = {}
-      const userWalletRole: Record<string, string> = {}
+      const walletCollabMap: Record<string, any[]> = {}
       if (wcData) {
         wcData.forEach(c => {
-          walletCollabCount[c.wallet_id] = (walletCollabCount[c.wallet_id] || 0) + 1
-          if (c.user_id === user?.id) {
-            userWalletRole[c.wallet_id] = c.role
-          }
+          if (!walletCollabMap[c.wallet_id]) walletCollabMap[c.wallet_id] = []
+          walletCollabMap[c.wallet_id].push(c)
         })
       }
 
-      const projetCollabCount: Record<string, number> = {}
-      const userProjetRole: Record<string, string> = {}
+      const projetCollabMap: Record<string, any[]> = {}
       if (pcData) {
         pcData.forEach(c => {
-          projetCollabCount[c.projet_id] = (projetCollabCount[c.projet_id] || 0) + 1
-          if (c.user_id === user?.id) {
-            userProjetRole[c.projet_id] = c.role
-          }
+          if (!projetCollabMap[c.projet_id]) projetCollabMap[c.projet_id] = []
+          projetCollabMap[c.projet_id].push(c)
         })
       }
 
@@ -234,24 +228,28 @@ export default function KobaPage() {
 
       const merged: Account[] = [
         ...(pfData || []).map(p => {
-          const collabCount = walletCollabCount[p.id] || 0
-          const myRole = userWalletRole[p.id] || (p.user_id === user?.id ? 'owner' : 'member')
+          const collabs = walletCollabMap[p.id] || []
+          const myCollabRow = collabs.find(c => c.user_id === user?.id)
+          const myRole = myCollabRow?.role || (p.user_id === user?.id ? 'owner' : 'member')
+          const isShared = p.user_id !== user?.id || collabs.some(c => c.user_id !== p.user_id)
           return { 
             ...p, 
             type: 'portfolio' as const, 
             solde: Number(p.solde) + (pfDeltas[p.id] || 0),
-            isShared: collabCount > 1 || p.user_id !== user?.id,
+            isShared,
             role: myRole
           }
         }),
         ...(prData || []).map(p => {
-          const collabCount = projetCollabCount[p.id] || 0
-          const myRole = userProjetRole[p.id] || (p.user_id === user?.id ? 'owner' : 'member')
+          const collabs = projetCollabMap[p.id] || []
+          const myCollabRow = collabs.find(c => c.user_id === user?.id)
+          const myRole = myCollabRow?.role || (p.user_id === user?.id ? 'owner' : 'member')
+          const isShared = p.user_id !== user?.id || collabs.some(c => c.user_id !== p.user_id)
           return { 
             ...p, 
             type: 'project' as const, 
             solde: projBalances[p.id] || 0,
-            isShared: collabCount > 1 || p.user_id !== user?.id,
+            isShared,
             role: myRole
           }
         })
