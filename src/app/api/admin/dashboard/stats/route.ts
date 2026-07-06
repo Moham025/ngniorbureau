@@ -1,7 +1,7 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin, supabaseAuthAdmin } from '@/lib/supabase'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const [
       { data: projects },
@@ -19,9 +19,13 @@ export async function GET() {
       supabaseAdmin.from('project_transactions').select('amount, date, created_at'),
     ])
 
+    const { searchParams } = new URL(request.url)
     const now = new Date()
-    const currentYear = now.getFullYear()
-    const currentMonth = now.getMonth()
+    const yearParam = searchParams.get('year')
+    const monthParam = searchParams.get('month')
+
+    const currentYear = yearParam ? parseInt(yearParam) : now.getFullYear()
+    const currentMonth = monthParam ? parseInt(monthParam) - 1 : now.getMonth()
 
     const isCurrentMonth = (dateStr?: string | null, createdAtStr?: string | null) => {
       let d: Date
@@ -59,7 +63,12 @@ export async function GET() {
       return sum + total
     }, 0)
 
-    const newClientsThisMonth = users.filter((u) => new Date(u.created_at) >= new Date(currentYear, currentMonth, 1)).length
+    const startOfMonth = new Date(currentYear, currentMonth, 1)
+    const endOfMonth = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59)
+    const newClientsThisMonth = users.filter((u) => {
+      const d = new Date(u.created_at)
+      return d >= startOfMonth && d <= endOfMonth
+    }).length
     const premiumUsers = users.filter((u) => u.app_metadata?.plan === 'premium').length
 
     return NextResponse.json({

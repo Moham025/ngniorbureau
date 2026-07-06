@@ -50,6 +50,9 @@ export default function AdminDashboard() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const { theme, setTheme } = useTheme()
 
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1)
+
   const [stats,       setStats]       = useState<DashboardStats | null>(null)
   const [clients,     setClients]     = useState<Client[]>([])
   const [categories,  setCategories]  = useState<Category[]>([])
@@ -82,7 +85,7 @@ export default function AdminDashboard() {
     setError((e)   => ({ ...e, [tab]: '' }))
     try {
       if (tab === 'dashboard') {
-        const r = await fetch('/api/admin/dashboard/stats')
+        const r = await fetch(`/api/admin/dashboard/stats?year=${selectedYear}&month=${selectedMonth}`)
         const j = await r.json()
         if (j.success) setStats(j.data); else setError((e) => ({ ...e, dashboard: j.error }))
       }
@@ -122,7 +125,7 @@ export default function AdminDashboard() {
       }
     } catch { setError((e) => ({ ...e, [tab]: 'Erreur de connexion réseau' })) }
     finally   { setLoading((l) => ({ ...l, [tab]: false })) }
-  }, [searchClients, searchProjects])
+  }, [selectedYear, selectedMonth, searchClients, searchProjects])
 
   useEffect(() => { fetchData(activeTab) }, [activeTab, fetchData])
 
@@ -190,6 +193,31 @@ export default function AdminDashboard() {
   const isLoading = loading[activeTab]
 
   // ─── DASHBOARD ───────────────────────────────────────────────────────────────
+  
+  const MONTH_NAMES = [
+    "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
+    "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
+  ]
+
+  const handlePrevMonth = () => {
+    setSelectedMonth((m) => {
+      if (m === 1) {
+        setSelectedYear((y) => y - 1)
+        return 12
+      }
+      return m - 1
+    })
+  }
+
+  const handleNextMonth = () => {
+    setSelectedMonth((m) => {
+      if (m === 12) {
+        setSelectedYear((y) => y + 1)
+        return 1
+      }
+      return m + 1
+    })
+  }
 
   const renderDashboard = () => (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -199,32 +227,65 @@ export default function AdminDashboard() {
             label: "Chiffre d'affaires (Versements)", 
             value: stats ? `${stats.monthlyRevenue.value} FCFA` : '—', 
             icon: TrendingUp,
-            sub: 'Cumul des versements ce mois'
+            sub: 'Cumul des versements ce mois',
+            isMonthDependent: true
           },
           { 
             label: "Projets du mois (Coût total)", 
             value: stats ? `${stats.monthlyProjectCosts.value} FCFA` : '—', 
             icon: DollarSign,
-            sub: stats ? `${stats.monthlyProjectCosts.count} nouveau(x) projet(s)` : ''
+            sub: stats ? `${stats.monthlyProjectCosts.count} nouveau(x) projet(s)` : '',
+            isMonthDependent: true
           },
           { 
             label: 'Clients ce mois', 
             value: stats ? `+${stats.newClients.value}` : '—', 
             icon: Users,
-            sub: stats ? `${stats.totalClients.premium} premium / ${stats.totalClients.free} gratuits` : '' 
+            sub: stats ? `${stats.totalClients.premium} premium / ${stats.totalClients.free} gratuits` : '',
+            isMonthDependent: true
           },
           { 
             label: 'Projets actifs', 
             value: stats?.totalProjects.active ?? '—', 
             icon: Box,
-            sub: stats ? `${stats.totalProjects.draft} brouillons` : '' 
+            sub: stats ? `${stats.totalProjects.draft} brouillons` : '',
+            isMonthDependent: false
           },
-        ].map(({ label, value, icon: Icon, sub }) => (
+        ].map(({ label, value, icon: Icon, sub, isMonthDependent }) => (
           <Card key={label} className="shadow-sm hover:shadow-md transition-shadow">
             <CardContent className="p-6">
-              <div className="flex justify-between items-center mb-3">
-                <span className="text-sm font-medium text-muted-foreground">{label}</span>
-                <Icon size={20} className="text-foreground" />
+              <div className="flex justify-between items-start mb-3 gap-2">
+                <div className="flex flex-col min-w-0">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">{label}</span>
+                  {isMonthDependent ? (
+                    <div className="flex items-center gap-1 mt-1 bg-muted/40 rounded-lg px-2 py-0.5 w-fit border border-border/40">
+                      <button 
+                        type="button" 
+                        onClick={(e) => { e.stopPropagation(); handlePrevMonth() }}
+                        className="hover:bg-muted p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                      >
+                        <ChevronLeft size={12} />
+                      </button>
+                      <span className="text-[10px] font-bold text-foreground/80 select-none whitespace-nowrap">
+                        {MONTH_NAMES[selectedMonth - 1]} {selectedYear}
+                      </span>
+                      <button 
+                        type="button" 
+                        onClick={(e) => { e.stopPropagation(); handleNextMonth() }}
+                        className="hover:bg-muted p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                      >
+                        <ChevronRight size={12} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1 mt-1 bg-transparent px-2 py-0.5 w-fit border border-transparent select-none">
+                      <span className="text-[10px] font-bold text-muted-foreground/60">
+                        Cumul Global
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <Icon size={18} className="text-foreground shrink-0 mt-0.5" />
               </div>
               <span className="text-2xl font-bold tracking-tight">{value}</span>
               {sub && <p className="text-xs text-muted-foreground mt-1.5">{sub}</p>}
