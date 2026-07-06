@@ -184,27 +184,39 @@ export default function KobaPage() {
       const { data: prData, error: prErr } = await kobaSupabase.from('projets').select('*')
       if (prErr) throw prErr
 
-      // Calculate project balances by fetching all transactions
-      const { data: txsData, error: txErr } = await kobaSupabase.from('transactions').select('projet_id, type, montant')
+      // Calculate project and portfolio balances by fetching all transactions
+      const { data: txsData, error: txErr } = await kobaSupabase.from('transactions').select('portefeuille_id, projet_id, type, montant')
       if (txErr) throw txErr
 
       const projBalances: Record<string, number> = {}
+      const pfDeltas: Record<string, number> = {}
       if (txsData) {
         txsData.forEach(tx => {
+          const val = tx.type === 'entree' ? Number(tx.montant) : -Number(tx.montant)
           if (tx.projet_id) {
-            const val = tx.type === 'entree' ? Number(tx.montant) : -Number(tx.montant)
             projBalances[tx.projet_id] = (projBalances[tx.projet_id] || 0) + val
+          }
+          if (tx.portefeuille_id) {
+            pfDeltas[tx.portefeuille_id] = (pfDeltas[tx.portefeuille_id] || 0) + val
           }
         })
       }
 
       const merged: Account[] = [
-        ...(pfData || []).map(p => ({ ...p, type: 'portfolio' as const, solde: Number(p.solde) })),
-        ...(prData || []).map(p => ({ ...p, type: 'project' as const, solde: projBalances[p.id] || 0 }))
+        ...(pfData || []).map(p => ({ 
+          ...p, 
+          type: 'portfolio' as const, 
+          solde: Number(p.solde) + (pfDeltas[p.id] || 0) 
+        })),
+        ...(prData || []).map(p => ({ 
+          ...p, 
+          type: 'project' as const, 
+          solde: projBalances[p.id] || 0 
+        }))
       ]
 
       setAccounts(merged)
-      setPortefeuillesList(pfData || [])
+      setPortefeuillesList(merged.filter(a => a.type === 'portfolio'))
 
       // Update active account if it's currently open to refresh balance
       if (activeAccount) {
@@ -440,17 +452,6 @@ export default function KobaPage() {
       const { error: txErr } = await kobaSupabase.from('transactions').insert(txData)
       if (txErr) throw txErr
 
-      // 2. Update portefeuille solde
-      const pfToUpdate = portefeuillesList.find(p => p.id === targetPfId)
-      if (pfToUpdate) {
-        const currentSolde = parseFloat(pfToUpdate.solde || 0)
-        const newSolde = formTxType === 'entree' ? currentSolde + amount : currentSolde - amount
-        await kobaSupabase.from('portefeuilles').update({
-          solde: newSolde,
-          updated_at: new Date().toISOString()
-        }).eq('id', targetPfId)
-      }
-
       closeModal()
       // Refresh current view
       loadAccounts() // will also trigger loadTransactions for active account
@@ -475,18 +476,7 @@ export default function KobaPage() {
       const oldSolde = activeAccount.solde
       const diff = newSolde - oldSolde
 
-      // 1. Update the portfolio balance in the database
-      const { error: updateErr } = await kobaSupabase
-        .from('portefeuilles')
-        .update({
-          solde: newSolde,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', activeAccount.id)
-
-      if (updateErr) throw updateErr
-
-      // 2. If there is a difference, create a adjustment transaction
+      // 1. If there is a difference, create a adjustment transaction
       if (diff !== 0) {
         const { error: txErr } = await kobaSupabase.from('transactions').insert({
           id: generateUuid(),
@@ -495,7 +485,7 @@ export default function KobaPage() {
           type: diff > 0 ? 'entree' : 'depense',
           montant: Math.abs(diff),
           portefeuille_id: activeAccount.id,
-          description: 'Ajustement de solde',
+          description: 'Régularisation manuelle du solde',
           date_heure: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
