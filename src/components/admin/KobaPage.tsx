@@ -147,6 +147,22 @@ export default function KobaPage() {
     setAuthLoading(false)
   }
 
+  const handleGoogleLogin = async () => {
+    setAuthLoading(true)
+    setAuthError('')
+    const redirectTo = typeof window !== 'undefined' ? `${window.location.origin}/` : undefined
+    const { error } = await kobaSupabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo
+      }
+    })
+    if (error) {
+      setAuthError(error.message)
+      setAuthLoading(false)
+    }
+  }
+
   const handleLogout = async () => {
     await kobaSupabase.auth.signOut()
   }
@@ -504,6 +520,23 @@ export default function KobaPage() {
               {authError && <p className="text-sm text-destructive bg-destructive/10 p-3 rounded-md border border-destructive/20">{authError}</p>}
               <Button type="submit" className="w-full h-11 text-base font-semibold" disabled={authLoading}>
                 {authLoading ? 'Connexion en cours...' : 'Se connecter'}
+              </Button>
+
+              <div className="relative flex py-2 items-center">
+                <div className="flex-grow border-t border-border"></div>
+                <span className="flex-shrink mx-4 text-muted-foreground text-xs uppercase">Ou</span>
+                <div className="flex-grow border-t border-border"></div>
+              </div>
+
+              <Button 
+                type="button" 
+                variant="outline" 
+                className="w-full h-11 text-base font-semibold gap-2.5 bg-background/50 hover:bg-muted"
+                onClick={handleGoogleLogin}
+                disabled={authLoading}
+              >
+                <img src="/Google__G__logo.png" alt="Google" className="w-5 h-5" />
+                Se connecter avec Google
               </Button>
             </form>
           </CardContent>
