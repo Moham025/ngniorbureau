@@ -5,7 +5,7 @@ import { createClient, User } from '@supabase/supabase-js'
 import { 
   Wallet, FolderOpen, ArrowUpRight, ArrowDownRight, Plus, 
   RefreshCw, LogOut, ChevronLeft, Link as LinkIcon, Trash2,
-  Lock
+  Lock, Edit2
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -80,7 +80,7 @@ export default function KobaPage() {
   const [collaborators, setCollaborators] = useState<Record<string, string>>({})
 
   // --- Modals State ---
-  const [modalType, setModalType] = useState<'portfolio' | 'project' | 'sync' | 'transaction' | null>(null)
+  const [modalType, setModalType] = useState<'portfolio' | 'project' | 'sync' | 'transaction' | 'edit-balance' | null>(null)
   const [modalLoading, setModalLoading] = useState(false)
   const [modalError, setModalError] = useState('')
 
@@ -461,10 +461,60 @@ export default function KobaPage() {
     }
   }
 
+  const handleEditBalance = async () => {
+    const newSolde = parseFloat(formSolde)
+    if (isNaN(newSolde)) {
+      setModalError('Montant invalide.')
+      return
+    }
+    if (!activeAccount || activeAccount.type !== 'portfolio') return
+
+    setModalLoading(true)
+    setModalError('')
+    try {
+      const oldSolde = activeAccount.solde
+      const diff = newSolde - oldSolde
+
+      // 1. Update the portfolio balance in the database
+      const { error: updateErr } = await kobaSupabase
+        .from('portefeuilles')
+        .update({
+          solde: newSolde,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', activeAccount.id)
+
+      if (updateErr) throw updateErr
+
+      // 2. If there is a difference, create a adjustment transaction
+      if (diff !== 0) {
+        const { error: txErr } = await kobaSupabase.from('transactions').insert({
+          id: generateUuid(),
+          user_id: user!.id,
+          local_uuid_owner: user!.id,
+          type: diff > 0 ? 'entree' : 'depense',
+          montant: Math.abs(diff),
+          portefeuille_id: activeAccount.id,
+          description: 'Ajustement de solde',
+          date_heure: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        if (txErr) throw txErr
+      }
+
+      closeModal()
+      loadAccounts()
+    } catch (e: any) {
+      setModalError(e.message)
+    } finally {
+      setModalLoading(false)
+    }
+  }
+
   const openModal = (type: typeof modalType) => {
     setModalError('')
     setFormName('')
-    setFormSolde('0')
+    setFormSolde(type === 'edit-balance' && activeAccount ? activeAccount.solde.toString() : '0')
     setFormColor(PALETTE[0])
     setFormSyncCode('')
     setFormTxType('entree')
@@ -693,8 +743,20 @@ export default function KobaPage() {
               </div>
               <div className="flex flex-col md:items-end gap-3">
                 <div className="text-sm text-muted-foreground font-medium">Solde actuel</div>
-                <div className={`text-4xl md:text-5xl font-black tracking-tighter ${activeAccount.solde < 0 ? 'text-destructive' : 'text-emerald-500'}`}>
-                  {formatMoney(activeAccount.solde)}
+                <div className="flex items-center gap-2">
+                  <div className={`text-4xl md:text-5xl font-black tracking-tighter ${activeAccount.solde < 0 ? 'text-destructive' : 'text-emerald-500'}`}>
+                    {formatMoney(activeAccount.solde)}
+                  </div>
+                  {activeAccount.type === 'portfolio' && (
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={() => openModal('edit-balance')}
+                      className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                    >
+                      <Edit2 size={16} />
+                    </Button>
+                  )}
                 </div>
                 <Button onClick={() => openModal('transaction')} className="mt-2 w-full md:w-auto gap-2" size="lg">
                   <Plus size={18} /> Ajouter Transaction
@@ -894,6 +956,32 @@ export default function KobaPage() {
                 {modalError && <p className="text-sm text-destructive text-left w-full mb-2">{modalError}</p>}
                 <Button variant="outline" onClick={closeModal}>Annuler</Button>
                 <Button onClick={handleAddTransaction} disabled={modalLoading}>{modalLoading ? 'Enregistrement...' : 'Enregistrer'}</Button>
+              </DialogFooter>
+            </>
+          )}
+
+          {modalType === 'edit-balance' && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Modifier le solde</DialogTitle>
+                <DialogDescription>Ajustez le solde actuel de {activeAccount?.nom}.</DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="space-y-2">
+                  <Label>Nouveau solde (FCFA)</Label>
+                  <Input 
+                    type="number" 
+                    value={formSolde} 
+                    onChange={e => setFormSolde(e.target.value)} 
+                    placeholder="0" 
+                    autoFocus 
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                {modalError && <p className="text-sm text-destructive text-left w-full mb-2">{modalError}</p>}
+                <Button variant="outline" onClick={closeModal}>Annuler</Button>
+                <Button onClick={handleEditBalance} disabled={modalLoading}>{modalLoading ? 'Enregistrement...' : 'Enregistrer'}</Button>
               </DialogFooter>
             </>
           )}
