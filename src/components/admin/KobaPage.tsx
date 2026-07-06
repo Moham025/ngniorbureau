@@ -5,7 +5,7 @@ import { createClient, User } from '@supabase/supabase-js'
 import { 
   Wallet, FolderOpen, ArrowUpRight, ArrowDownRight, Plus, 
   RefreshCw, LogOut, ChevronLeft, Link as LinkIcon, Trash2,
-  Lock, Edit2
+  Lock, Edit2, Users
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -37,6 +37,9 @@ interface Account {
   type: AccountType
   solde: number
   is_archived?: boolean
+  user_id: string
+  isShared?: boolean
+  role?: string
 }
 
 interface Transaction {
@@ -188,6 +191,33 @@ export default function KobaPage() {
       const { data: txsData, error: txErr } = await kobaSupabase.from('transactions').select('portefeuille_id, projet_id, type, montant')
       if (txErr) throw txErr
 
+      // Fetch wallet collaborators to check if shared
+      const { data: wcData } = await kobaSupabase.from('wallet_collaborators').select('wallet_id, user_id, role')
+      // Fetch project collaborators to check if shared
+      const { data: pcData } = await kobaSupabase.from('projet_collaborators').select('projet_id, user_id, role')
+
+      const walletCollabCount: Record<string, number> = {}
+      const userWalletRole: Record<string, string> = {}
+      if (wcData) {
+        wcData.forEach(c => {
+          walletCollabCount[c.wallet_id] = (walletCollabCount[c.wallet_id] || 0) + 1
+          if (c.user_id === user?.id) {
+            userWalletRole[c.wallet_id] = c.role
+          }
+        })
+      }
+
+      const projetCollabCount: Record<string, number> = {}
+      const userProjetRole: Record<string, string> = {}
+      if (pcData) {
+        pcData.forEach(c => {
+          projetCollabCount[c.projet_id] = (projetCollabCount[c.projet_id] || 0) + 1
+          if (c.user_id === user?.id) {
+            userProjetRole[c.projet_id] = c.role
+          }
+        })
+      }
+
       const projBalances: Record<string, number> = {}
       const pfDeltas: Record<string, number> = {}
       if (txsData) {
@@ -203,16 +233,28 @@ export default function KobaPage() {
       }
 
       const merged: Account[] = [
-        ...(pfData || []).map(p => ({ 
-          ...p, 
-          type: 'portfolio' as const, 
-          solde: Number(p.solde) + (pfDeltas[p.id] || 0) 
-        })),
-        ...(prData || []).map(p => ({ 
-          ...p, 
-          type: 'project' as const, 
-          solde: projBalances[p.id] || 0 
-        }))
+        ...(pfData || []).map(p => {
+          const collabCount = walletCollabCount[p.id] || 0
+          const myRole = userWalletRole[p.id] || (p.user_id === user?.id ? 'owner' : 'member')
+          return { 
+            ...p, 
+            type: 'portfolio' as const, 
+            solde: Number(p.solde) + (pfDeltas[p.id] || 0),
+            isShared: collabCount > 1 || p.user_id !== user?.id,
+            role: myRole
+          }
+        }),
+        ...(prData || []).map(p => {
+          const collabCount = projetCollabCount[p.id] || 0
+          const myRole = userProjetRole[p.id] || (p.user_id === user?.id ? 'owner' : 'member')
+          return { 
+            ...p, 
+            type: 'project' as const, 
+            solde: projBalances[p.id] || 0,
+            isShared: collabCount > 1 || p.user_id !== user?.id,
+            role: myRole
+          }
+        })
       ]
 
       setAccounts(merged)
@@ -651,16 +693,32 @@ export default function KobaPage() {
                       <div className="h-1.5 w-full" style={{ backgroundColor: pf.couleur || PALETTE[0] }} />
                       <CardContent className="p-5 space-y-4">
                         <div className="flex items-start justify-between">
-                          <div className="font-medium truncate pr-4 text-base" title={pf.nom}>{pf.nom}</div>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <div className="font-medium truncate text-base" title={pf.nom}>{pf.nom}</div>
+                            {pf.isShared && (
+                              <Users size={14} className="text-muted-foreground shrink-0" />
+                            )}
+                          </div>
                           <div className="p-1.5 rounded-md bg-emerald-500/10 text-emerald-500 shrink-0">
                             <Wallet size={16} />
                           </div>
                         </div>
-                        <div>
-                          <div className="text-2xl font-bold tracking-tight">
-                            {formatMoney(pf.solde)}
+                        <div className="flex items-end justify-between">
+                          <div>
+                            <div className="text-2xl font-bold tracking-tight">
+                              {formatMoney(pf.solde)}
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-1 font-medium">Portefeuille KOBA</div>
                           </div>
-                          <div className="text-xs text-muted-foreground mt-1 font-medium">Portefeuille KOBA</div>
+                          {pf.isShared && (
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide border ${
+                              pf.role === 'owner' 
+                                ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' 
+                                : 'bg-blue-500/10 text-blue-500 border-blue-500/20'
+                            }`}>
+                              {pf.role === 'owner' ? 'Propriétaire' : 'Membre'}
+                            </span>
+                          )}
                         </div>
                       </CardContent>
                     </Card>
@@ -686,18 +744,34 @@ export default function KobaPage() {
                       onClick={() => setActiveAccount(pr)}
                     >
                       <div className="h-1.5 w-full bg-purple-500" />
-                      <CardContent className="p-5 space-y-4">
+                      <CardContent className="p-5">
                         <div className="flex items-start justify-between">
-                          <div className="font-medium truncate pr-4 text-base" title={pr.nom}>{pr.nom}</div>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <div className="font-medium truncate text-base" title={pr.nom}>{pr.nom}</div>
+                            {pr.isShared && (
+                              <Users size={14} className="text-muted-foreground shrink-0" />
+                            )}
+                          </div>
                           <div className="p-1.5 rounded-md bg-purple-500/10 text-purple-500 shrink-0">
                             <FolderOpen size={16} />
                           </div>
                         </div>
-                        <div>
-                          <div className={`text-2xl font-bold tracking-tight ${pr.solde < 0 ? 'text-destructive' : ''}`}>
-                            {formatMoney(pr.solde)}
+                        <div className="flex items-end justify-between mt-4">
+                          <div>
+                            <div className={`text-2xl font-bold tracking-tight ${pr.solde < 0 ? 'text-destructive' : ''}`}>
+                              {formatMoney(pr.solde)}
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-1 font-medium">Projet Partagé</div>
                           </div>
-                          <div className="text-xs text-muted-foreground mt-1 font-medium">Projet Partagé</div>
+                          {pr.isShared && (
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide border ${
+                              pr.role === 'owner' 
+                                ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' 
+                                : 'bg-blue-500/10 text-blue-500 border-blue-500/20'
+                            }`}>
+                              {pr.role === 'owner' ? 'Propriétaire' : 'Membre'}
+                            </span>
+                          )}
                         </div>
                       </CardContent>
                     </Card>
@@ -728,8 +802,23 @@ export default function KobaPage() {
                 <div className="flex items-center gap-2 text-muted-foreground mb-2">
                   {activeAccount.type === 'portfolio' ? <Wallet size={16} className="text-emerald-500" /> : <FolderOpen size={16} className="text-purple-500" />}
                   <span className="uppercase text-xs font-bold tracking-wider">{activeAccount.type === 'portfolio' ? 'Portefeuille' : 'Projet KOBA'}</span>
+                  {activeAccount.isShared && (
+                    <>
+                      <span className="text-muted-foreground/30">•</span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide border ${
+                        activeAccount.role === 'owner' 
+                          ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' 
+                          : 'bg-blue-500/10 text-blue-500 border-blue-500/20'
+                      }`}>
+                        {activeAccount.role === 'owner' ? 'Propriétaire' : 'Membre'}
+                      </span>
+                    </>
+                  )}
                 </div>
-                <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight">{activeAccount.nom}</h2>
+                <div className="flex items-center gap-3">
+                  <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight">{activeAccount.nom}</h2>
+                  {activeAccount.isShared && <Users className="text-muted-foreground" size={24} />}
+                </div>
               </div>
               <div className="flex flex-col md:items-end gap-3">
                 <div className="text-sm text-muted-foreground font-medium">Solde actuel</div>
