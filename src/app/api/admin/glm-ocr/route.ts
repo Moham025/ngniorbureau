@@ -20,7 +20,7 @@ export async function POST(req: Request) {
         'Authorization': `Bearer ${customKey}`
       },
       body: JSON.stringify({
-        model: 'glm-4v',
+        model: 'glm-4v-plus',
         messages: [
           {
             role: 'user',
