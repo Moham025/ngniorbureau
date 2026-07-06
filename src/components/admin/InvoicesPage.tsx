@@ -501,8 +501,13 @@ function DocForm({ doc, initialClient, initialType, clients, onSave, onCancel }:
         ? `${basePrompt}\n\nVoici le texte actuel à reformuler ou améliorer :\n"${notes}"`
         : `${basePrompt}\n\nGénère une proposition de conditions standard appropriée.`
 
+      const deepseekKey = typeof window !== 'undefined' ? (localStorage.getItem('deepseek_api_key') || '') : ''
       const res = await fetch('/api/ai/description', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-DeepSeek-Key': deepseekKey
+        },
         body: JSON.stringify({ prompt: finalPrompt })
       })
       const j = await res.json()

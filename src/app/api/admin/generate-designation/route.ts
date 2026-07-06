@@ -9,11 +9,14 @@ export async function POST(req: Request) {
 
     const finalPrompt = prompt.replace('{projet}', text)
     
+    const customKey = req.headers.get('x-deepseek-key')
+    const apiKey = customKey || 'sk-27e0373b97414135b4de303cb6dbaeda'
+
     const response = await fetch('https://api.deepseek.com/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer sk-27e0373b97414135b4de303cb6dbaeda`
+        'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
         model: 'deepseek-chat',

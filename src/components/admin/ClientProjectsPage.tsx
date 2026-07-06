@@ -1232,6 +1232,14 @@ function ProjectFormModal({ editing, initialClientId, clients, invoices, proform
   const [saving,      setSaving]      = useState(false)
   const [err,         setErr]         = useState('')
 
+  const [deepseekKey, setDeepseekKey] = useState('')
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setDeepseekKey(localStorage.getItem('deepseek_api_key') || '')
+    }
+  }, [])
+
   // AI & Models
   const [aiPrompt,    setAiPrompt]    = useState(DEFAULT_AI_PROMPT)
   const [showAIPaste, setShowAIPaste] = useState(false)
@@ -1295,9 +1303,13 @@ function ProjectFormModal({ editing, initialClientId, clients, invoices, proform
     }
     setIsGeneratingDesig(true);
     try {
+      const currentKey = typeof window !== 'undefined' ? (localStorage.getItem('deepseek_api_key') || '') : ''
       const r = await fetch('/api/admin/generate-designation', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-DeepSeek-Key': currentKey
+        },
         body: JSON.stringify({ prompt: desigPrompt, text: designation })
       });
       const j = await r.json();
@@ -1655,11 +1667,29 @@ function ProjectFormModal({ editing, initialClientId, clients, invoices, proform
             <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4" onClick={() => setShowPrompt(false)}>
               <div className="bg-card border rounded-2xl w-full max-w-lg p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
                 <h3 className="font-bold text-lg mb-3">⚙ Prompt IA par défaut</h3>
-                <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
+                
+                <div className="mb-4">
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Clé API DeepSeek</label>
+                  <Input 
+                    type="password" 
+                    placeholder="sk-..." 
+                    value={deepseekKey} 
+                    onChange={(e) => {
+                      setDeepseekKey(e.target.value)
+                      localStorage.setItem('deepseek_api_key', e.target.value)
+                    }} 
+                    className="h-9 text-sm"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    La clé est sauvegardée localement dans votre navigateur et partagée par toutes les fonctionnalités d'IA.
+                  </p>
+                </div>
+
+                <p className="text-xs text-muted-foreground mb-2 leading-relaxed">
                   Modifiez ce prompt pour l'adapter à vos besoins (par ex: services au lieu de matériaux, ou BTP général).
                   Copiez ce texte et collez-le dans ChatGPT, Claude ou Gemini.
                 </p>
-                <textarea value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} rows={12}
+                <textarea value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} rows={10}
                   className="w-full text-sm font-mono bg-muted p-3 rounded-lg border focus:ring-2 focus:ring-primary/50 outline-none resize-none mb-4" />
                 <div className="flex gap-2 justify-end">
                   <Button type="button" variant="outline" onClick={() => setAiPrompt(DEFAULT_AI_PROMPT)}>Réinitialiser</Button>
@@ -1714,11 +1744,29 @@ function ProjectFormModal({ editing, initialClientId, clients, invoices, proform
             <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4" onClick={() => setShowDesigPrompt(false)}>
               <div className="bg-card border rounded-2xl w-full max-w-lg p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
                 <h3 className="font-bold text-lg mb-3">⚙ Prompt IA Désignation</h3>
-                <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
+                
+                <div className="mb-4">
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Clé API DeepSeek</label>
+                  <Input 
+                    type="password" 
+                    placeholder="sk-..." 
+                    value={deepseekKey} 
+                    onChange={(e) => {
+                      setDeepseekKey(e.target.value)
+                      localStorage.setItem('deepseek_api_key', e.target.value)
+                    }} 
+                    className="h-9 text-sm"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    La clé est sauvegardée localement dans votre navigateur et partagée par toutes les fonctionnalités d'IA.
+                  </p>
+                </div>
+
+                <p className="text-xs text-muted-foreground mb-2 leading-relaxed">
                   Modifiez ce prompt pour l'adapter à vos besoins de reformulation de projet.
                   Copiez ce texte et collez-le dans ChatGPT, Claude ou Gemini.
                 </p>
-                <textarea value={desigPrompt} onChange={e => setDesigPrompt(e.target.value)} rows={12}
+                <textarea value={desigPrompt} onChange={e => setDesigPrompt(e.target.value)} rows={10}
                   className="w-full text-sm font-mono bg-muted p-3 rounded-lg border focus:ring-2 focus:ring-primary/50 outline-none resize-none mb-4" />
                 <div className="flex gap-2 justify-end">
                   <Button type="button" variant="outline" onClick={() => setDesigPrompt(DEFAULT_DESIG_PROMPT)}>Réinitialiser</Button>

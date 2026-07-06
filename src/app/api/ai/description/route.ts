@@ -9,10 +9,13 @@ export async function POST(request: NextRequest) {
 
     if (!prompt) return NextResponse.json({ success: false, error: 'Prompt requis' }, { status: 400 })
 
+    const customKey = request.headers.get('x-deepseek-key')
+    const apiKey = customKey || DEEPSEEK_API_KEY
+
     const res = await fetch('https://api.deepseek.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
+        Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({

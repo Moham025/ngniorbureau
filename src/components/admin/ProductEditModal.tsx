@@ -103,9 +103,13 @@ export default function ProductEditModal({ product, onClose, onSaved }: Props) {
   // ─── AI helpers ───────────────────────────────────────────────────────────
 
   const callAI = useCallback(async (prompt: string): Promise<string> => {
+    const deepseekKey = typeof window !== 'undefined' ? (localStorage.getItem('deepseek_api_key') || '') : ''
     const r = await fetch('/api/ai/description', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-DeepSeek-Key': deepseekKey
+      },
       body: JSON.stringify({ prompt }),
     })
     const j = await r.json()
