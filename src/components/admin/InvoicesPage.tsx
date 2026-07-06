@@ -403,21 +403,39 @@ function DocForm({ doc, initialClient, initialType, clients, onSave, onCancel }:
       if (!formEl) return
 
       const items = e.clipboardData?.items;
-      if (!items) return;
-
+      const files = e.clipboardData?.files;
+      
       let hasImage = false;
       let imageFile: File | null = null;
       let textContent = '';
 
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        if (item.type.indexOf('image') !== -1) {
-          hasImage = true;
-          imageFile = item.getAsFile();
-          break;
-        } else if (item.type === 'text/plain') {
-          textContent = e.clipboardData.getData('text');
+      // 1. Check files list first (robust for explorer copy & screenshots)
+      if (files && files.length > 0) {
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          if (file.type.startsWith('image/')) {
+            hasImage = true;
+            imageFile = file;
+            break;
+          }
         }
+      }
+
+      // 2. Check items if no file found
+      if (!hasImage && items) {
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          if (item.type.indexOf('image') !== -1) {
+            hasImage = true;
+            imageFile = item.getAsFile();
+            break;
+          }
+        }
+      }
+
+      // 3. Fallback to text
+      if (!hasImage && e.clipboardData) {
+        textContent = e.clipboardData.getData('text') || '';
       }
 
       if (hasImage && imageFile) {

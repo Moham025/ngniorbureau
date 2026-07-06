@@ -108,26 +108,27 @@ const COLUMN_LABELS = {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function ClientProjectsPage() {
-  const [collapsedColumns, setCollapsedColumns] = useState<Record<string, boolean>>(() => {
+  const [collapsedColumns, setCollapsedColumns] = useState<Record<string, boolean>>({
+    id: false,
+    client: false,
+    type: false,
+    designation: false,
+    cost: false,
+    versed: false,
+    remaining: false,
+    date: false,
+    status: false,
+    koba: false,
+  })
+
+  useEffect(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('client-projects-collapsed')
       if (saved) {
-        try { return JSON.parse(saved) } catch { /* ignore */ }
+        try { setCollapsedColumns(JSON.parse(saved)) } catch { /* ignore */ }
       }
     }
-    return {
-      id: false,
-      client: false,
-      type: false,
-      designation: false,
-      cost: false,
-      versed: false,
-      remaining: false,
-      date: false,
-      status: false,
-      koba: false,
-    }
-  })
+  }, [])
 
   useEffect(() => {
     localStorage.setItem('client-projects-collapsed', JSON.stringify(collapsedColumns))
@@ -1233,12 +1234,149 @@ function ProjectFormModal({ editing, initialClientId, clients, invoices, proform
   const [err,         setErr]         = useState('')
 
   const [deepseekKey, setDeepseekKey] = useState('')
+  const [glmKey,      setGlmKey]      = useState('')
+  const [isAiProcessing, setIsAiProcessing] = useState(false)
+  const [aiProcessingStatus, setAiProcessingStatus] = useState('')
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
       setDeepseekKey(localStorage.getItem('deepseek_api_key') || '')
+      setGlmKey(localStorage.getItem('glm_api_key') || '')
     }
   }, [])
+
+  useEffect(() => {
+    const handlePaste = async (e: ClipboardEvent) => {
+      const formEl = document.getElementById('project-form')
+      if (!formEl) return
+
+      const items = e.clipboardData?.items;
+      const files = e.clipboardData?.files;
+      
+      let hasImage = false;
+      let imageFile: File | null = null;
+      let textContent = '';
+
+      // 1. Check files list first (robust for explorer copy & screenshots)
+      if (files && files.length > 0) {
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          if (file.type.startsWith('image/')) {
+            hasImage = true;
+            imageFile = file;
+            break;
+          }
+        }
+      }
+
+      // 2. Check items if no file found
+      if (!hasImage && items) {
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          if (item.type.indexOf('image') !== -1) {
+            hasImage = true;
+            imageFile = item.getAsFile();
+            break;
+          }
+        }
+      }
+
+      // 3. Fallback to text
+      if (!hasImage && e.clipboardData) {
+        textContent = e.clipboardData.getData('text') || '';
+      }
+
+      if (hasImage && imageFile) {
+        e.preventDefault();
+        const glmKeyLocal = localStorage.getItem('glm_api_key') || ''
+        if (!glmKeyLocal) {
+          alert("Veuillez d'abord configurer votre clé API GLM dans les paramètres IA.")
+          return
+        }
+        setIsAiProcessing(true)
+        setAiProcessingStatus("Extraction du texte de l'image (OCR GLM)...")
+        
+        try {
+          const reader = new FileReader()
+          reader.onloadend = async () => {
+            const base64data = reader.result as string
+            try {
+              const res = await fetch('/api/admin/glm-ocr', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-GLM-Key': glmKeyLocal
+                },
+                body: JSON.stringify({ image: base64data })
+              })
+              const j = await res.json()
+              if (!j.success) {
+                alert("Erreur OCR GLM : " + j.error)
+                setIsAiProcessing(false)
+                return
+              }
+
+              setAiProcessingStatus("Interprétation du devis/DQE par DeepSeek...")
+              const parseRes = await fetch('/api/admin/ai-parse-articles', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-DeepSeek-Key': localStorage.getItem('deepseek_api_key') || ''
+                },
+                body: JSON.stringify({ text: j.text })
+              })
+              const parseJ = await parseRes.json()
+              if (parseJ.success && Array.isArray(parseJ.items)) {
+                setItems(parseJ.items)
+              } else {
+                alert("Erreur d'interprétation DeepSeek : " + (parseJ.error || "Format non reconnu"))
+              }
+            } catch (err: any) {
+              alert("Erreur : " + err.message)
+            } finally {
+              setIsAiProcessing(false)
+            }
+          }
+          reader.readAsDataURL(imageFile)
+        } catch (err: any) {
+          alert("Erreur lors de la lecture de l'image : " + err.message)
+          setIsAiProcessing(false)
+        }
+      } else if (textContent && textContent.trim().length > 10) {
+        const activeEl = document.activeElement;
+        const isInput = activeEl?.tagName === 'INPUT' || activeEl?.tagName === 'TEXTAREA';
+        
+        if (!isInput || textContent.includes('\n') || textContent.includes(';')) {
+          e.preventDefault();
+          setIsAiProcessing(true)
+          setAiProcessingStatus("Interprétation du devis/DQE collé par DeepSeek...")
+          try {
+            const parseRes = await fetch('/api/admin/ai-parse-articles', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-DeepSeek-Key': localStorage.getItem('deepseek_api_key') || ''
+              },
+              body: JSON.stringify({ text: textContent })
+            })
+            const parseJ = await parseRes.json()
+            if (parseJ.success && Array.isArray(parseJ.items)) {
+              setItems(parseJ.items)
+            } else {
+              alert("Erreur d'interprétation DeepSeek : " + (parseJ.error || "Format non reconnu"))
+            }
+          } catch (err: any) {
+            alert("Erreur réseau : " + err.message)
+          } finally {
+            setIsAiProcessing(false)
+          }
+        }
+      }
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, []);
 
   // AI & Models
   const [aiPrompt,    setAiPrompt]    = useState(DEFAULT_AI_PROMPT)
@@ -1536,6 +1674,13 @@ function ProjectFormModal({ editing, initialClientId, clients, invoices, proform
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-5 relative">
+          {isAiProcessing && (
+            <div className="absolute inset-0 bg-background/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center text-center p-4">
+              <Loader2 className="animate-spin text-primary mb-3" size={36} />
+              <p className="text-sm font-semibold">{aiProcessingStatus}</p>
+              <p className="text-xs text-muted-foreground mt-1">Veuillez patienter pendant le traitement...</p>
+            </div>
+          )}
           <form id="project-form" onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Client */}
@@ -1682,6 +1827,23 @@ function ProjectFormModal({ editing, initialClientId, clients, invoices, proform
                   />
                   <p className="text-[10px] text-muted-foreground mt-1">
                     La clé est sauvegardée localement dans votre navigateur et partagée par toutes les fonctionnalités d'IA.
+                  </p>
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Clé API GLM (Zhipu AI - OCR)</label>
+                  <Input 
+                    type="password" 
+                    placeholder="Clé API GLM..." 
+                    value={glmKey} 
+                    onChange={(e) => {
+                      setGlmKey(e.target.value)
+                      localStorage.setItem('glm_api_key', e.target.value)
+                    }} 
+                    className="h-9 text-sm"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    La clé est sauvegardée localement dans votre navigateur et utilisée pour l'OCR des images collées (Ctrl + V).
                   </p>
                 </div>
 
