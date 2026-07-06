@@ -98,9 +98,14 @@ export default function KobaPage() {
 
   useEffect(() => {
     const checkSession = async () => {
-      const { data: { session } } = await kobaSupabase.auth.getSession()
-      setUser(session?.user ?? null)
-      setAuthLoading(false)
+      try {
+        const { data: { session } } = await kobaSupabase.auth.getSession()
+        setUser(session?.user ?? null)
+      } catch (err) {
+        console.error("Koba session check error:", err)
+      } finally {
+        setAuthLoading(false)
+      }
     }
     checkSession()
 
