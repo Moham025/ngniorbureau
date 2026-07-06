@@ -1221,7 +1221,7 @@ function ProjectFormModal({ editing, initialClientId, clients, invoices, proform
   const [selectedClient, setSelectedClient] = useState(editing?.client_id ?? initialClientId ?? '')
   const [type,        setType]        = useState(editing?.type ?? '')
   const [designation, setDesignation] = useState(editing?.designation ?? '')
-  const [date,        setDate]        = useState(editing?.date ? new Date(editing.date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10))
+  const [date,        setDate]        = useState(editing?.date ? editing.date.slice(0, 10) : new Date().toISOString().slice(0, 10))
   
   // Invoice logic
   const [invoiceType, setInvoiceType] = useState('Facture')
@@ -1249,6 +1249,33 @@ function ProjectFormModal({ editing, initialClientId, clients, invoices, proform
   const jsonInputRef = useRef<HTMLInputElement>(null)
 
   const selectedClientObj = clients.find((c) => c.id === selectedClient)
+
+  useEffect(() => {
+    if (editing?.invoice_id) {
+      const fetchInvoice = async () => {
+        try {
+          const r = await fetch(`/api/admin/invoices?id=${editing.invoice_id}`)
+          const j = await r.json()
+          if (j.success && j.data) {
+            const doc = j.data
+            setInvoiceType(doc.type || 'Facture')
+            setTva(doc.tva_rate || '18 %')
+            setNotes(doc.notes || '')
+            if (Array.isArray(doc.items)) {
+              setItems(doc.items.map((i: any) => ({
+                desc: i.desc || i.description || '',
+                qty: Number(i.qty) || 1,
+                price: Number(i.price) || 0
+              })))
+            }
+          }
+        } catch (err) {
+          console.error("Error fetching linked invoice:", err)
+        }
+      }
+      fetchInvoice()
+    }
+  }, [editing])
 
   const handleClose = () => {
     if (!editing && !saving) {
@@ -1407,10 +1434,49 @@ function ProjectFormModal({ editing, initialClientId, clients, invoices, proform
       
       const url    = editing ? `/api/admin/client-projects/${editing.id}` : '/api/admin/client-projects'
       const method = editing ? 'PUT' : 'POST'
-      if (editing) { delete body.client_id; delete body.client_code; delete body.client_name }
+      if (editing) {
+        delete body.client_email
+        delete body.client_phone
+      }
       const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const j = await r.json()
-      if (j.success) onSaved()
+      if (j.success) {
+        if (editing) {
+          // 1. Update linked invoice if it exists
+          if (editing.invoice_id) {
+            const invoiceBody = {
+              client_name:  selectedClientObj?.name ?? editing.client_name,
+              client_email: selectedClientObj?.email ?? '',
+              client_phone: selectedClientObj?.phone ?? '',
+              objet:        designation,
+              type:         invoiceType,
+              tva_rate:     tva,
+              items:        items.filter((i) => i.desc.trim()),
+              total_ht:     ht,
+              total_tva:    tvaVal,
+              total:        ttc,
+              notes:        notes
+            }
+            await fetch(`/api/admin/invoices/${editing.invoice_id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(invoiceBody)
+            })
+          }
+
+          // 2. Update KOBA transactions description if linked
+          if (editing.koba_account_id) {
+            const oldDesc = `${editing.client_name} (${editing.designation})`
+            const newDesc = `${selectedClientObj?.name ?? editing.client_name} (${designation})`
+            
+            await kobaSupabase
+              .from('transactions')
+              .update({ description: newDesc })
+              .eq('description', oldDesc)
+          }
+        }
+        onSaved()
+      }
       else setErr(j.tableNotFound ? 'Table "client_projects" introuvable dans Supabase.' : (j.error ?? 'Erreur'))
     } catch { setErr('Erreur de connexion') }
     finally { setSaving(false) }
@@ -1463,7 +1529,7 @@ function ProjectFormModal({ editing, initialClientId, clients, invoices, proform
               {/* Client */}
               <div>
                 <label className="block text-sm font-semibold text-muted-foreground mb-1.5">Client *</label>
-                <select id="project-client" value={selectedClient} onChange={(e) => setSelectedClient(e.target.value)} disabled={!!editing} required
+                <select id="project-client" value={selectedClient} onChange={(e) => setSelectedClient(e.target.value)} required
                   className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50">
                   <option value="">— Sélectionner un client —</option>
                   {clients.map((c) => <option key={c.id} value={c.id}>{c.client_code ? `[${c.client_code}] ` : ''}{c.name || c.email} {c.name && c.email && c.name !== c.email ? `(${c.email})` : ''}</option>)}
@@ -1505,7 +1571,7 @@ function ProjectFormModal({ editing, initialClientId, clients, invoices, proform
               <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-64 h-9 text-sm" />
             </div>
 
-            {!editing && (
+            {(!editing || editing.invoice_id) && (
               <div className="pt-2 border-t mt-4 space-y-4">
                 <h4 className="font-bold text-sm text-foreground uppercase tracking-wider">Articles & Facturation Automatique</h4>
                 
