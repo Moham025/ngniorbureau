@@ -8,6 +8,18 @@ import {
   ChevronLeft, ChevronRight
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { createClient } from '@supabase/supabase-js'
+
+const KOBA_URL = 'https://xajozimjmbgsgxsaqhbb.supabase.co'
+const KOBA_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhham96aW1qbWJnc2d4c2FxaGJiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2MDU2NDAsImV4cCI6MjA4NzE4MTY0MH0.NWqLZXHDw4tvlmTR_c0lwvMrJl-vhr-N5ghARCWgO2s'
+
+const kobaSupabase = createClient(KOBA_URL, KOBA_ANON_KEY, {
+  auth: {
+    storageKey: 'koba-supabase-token',
+    persistSession: true,
+    autoRefreshToken: true
+  }
+})
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -30,6 +42,9 @@ interface ClientProject {
   client_name: string; type: string; designation: string
   invoice_id: string | null; date: string; status: string
   created_at?: string; total?: number; linked_invoices?: LinkedInvoice[]
+  koba_account_id?: string | null
+  koba_account_name?: string | null
+  koba_account_type?: string | null
 }
 
 interface ClientOption { id: string; name: string; email: string; phone: string; client_code: string }
@@ -87,6 +102,7 @@ const COLUMN_LABELS = {
   remaining: 'Reste',
   date: 'Date',
   status: 'Statut',
+  koba: 'Versement (KOBA)',
   actions: 'Actions',
 }
 
@@ -109,6 +125,7 @@ export default function ClientProjectsPage() {
       remaining: false,
       date: false,
       status: false,
+      koba: false,
     }
   })
 
@@ -178,6 +195,97 @@ export default function ClientProjectsPage() {
   const [error,            setError]            = useState('')
   const [search,           setSearch]           = useState('')
   const [tableNotFound,    setTableNotFound]    = useState(false)
+
+  const [kobaUser, setKobaUser] = useState<any>(null)
+  const [kobaAccounts, setKobaAccounts] = useState<any[]>([])
+
+  useEffect(() => {
+    const checkKobaSession = async () => {
+      const { data: { session } } = await kobaSupabase.auth.getSession()
+      if (session?.user) {
+        setKobaUser(session.user)
+        try {
+          const { data: pfData } = await kobaSupabase.from('portefeuilles').select('id, nom')
+          const { data: prData } = await kobaSupabase.from('projets').select('id, nom')
+          
+          const accountsList = [
+            ...(pfData || []).map(p => ({ id: p.id, nom: p.nom, type: 'portfolio' })),
+            ...(prData || []).map(p => ({ id: p.id, nom: p.nom, type: 'project' }))
+          ]
+          setKobaAccounts(accountsList)
+        } catch (err) {
+          console.error('Error loading KOBA accounts:', err)
+        }
+      }
+    }
+    checkKobaSession()
+  }, [])
+
+  const handleKobaAccountChange = async (project: ClientProject, selectedAccountId: string) => {
+    try {
+      const selectedAcc = kobaAccounts.find(a => a.id === selectedAccountId)
+      const nextKobaId = selectedAccountId || null
+      const nextKobaName = selectedAcc ? selectedAcc.nom : null
+      const nextKobaType = selectedAcc ? selectedAcc.type : null
+
+      const res = await fetch(`/api/admin/client-projects/${project.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          koba_account_id: nextKobaId,
+          koba_account_name: nextKobaName,
+          koba_account_type: nextKobaType
+        })
+      })
+      const j = await res.json()
+      if (!j.success) {
+        alert("Erreur lors de la mise à jour du compte: " + j.error)
+        return
+      }
+
+      setProjects(prev => prev.map(pr => pr.id === project.id ? {
+        ...pr,
+        koba_account_id: nextKobaId,
+        koba_account_name: nextKobaName,
+        koba_account_type: nextKobaType
+      } : pr))
+
+      const projectDesc = `${project.client_name} (${project.designation})`
+      await kobaSupabase.from('transactions').delete().eq('description', projectDesc)
+
+      if (nextKobaId) {
+        const txs = transactions.filter(t => t.project_id === project.id)
+        if (txs.length > 0) {
+          const firstPortfolioId = kobaAccounts.find(a => a.type === 'portfolio')?.id || ''
+
+          const kobaTxs = txs.map(t => {
+            const pfId = nextKobaType === 'portfolio' ? nextKobaId : firstPortfolioId
+            return {
+              id: crypto.randomUUID(),
+              user_id: kobaUser.id,
+              local_uuid_owner: kobaUser.id,
+              type: 'entree',
+              montant: t.amount,
+              portefeuille_id: pfId,
+              projet_id: nextKobaType === 'project' ? nextKobaId : null,
+              description: projectDesc,
+              date_heure: new Date(t.date).toISOString(),
+              updated_at: new Date().toISOString()
+            }
+          })
+
+          const { error: kobaErr } = await kobaSupabase.from('transactions').insert(kobaTxs)
+          if (kobaErr) {
+            console.error('Error inserting transactions to KOBA:', kobaErr)
+            alert("Projet lié avec succès, mais échec de la copie des transactions vers KOBA : " + kobaErr.message)
+          }
+        }
+      }
+    } catch (err: any) {
+      console.error(err)
+      alert("Erreur: " + err.message)
+    }
+  }
 
   const [clientFilter, setClientFilter] = useState<string>('Tout')
   const [clientSearch, setClientSearch] = useState('')
@@ -374,7 +482,7 @@ export default function ClientProjectsPage() {
 
       {/* Table */}
       <Card className="shadow-sm overflow-hidden w-full max-w-full">
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
           <Table 
             style={{ 
               minWidth: (() => {
@@ -388,6 +496,7 @@ export default function ClientProjectsPage() {
                 width += collapsedColumns.remaining ? 40 : 110
                 width += collapsedColumns.date ? 40 : 100
                 width += collapsedColumns.status ? 40 : 90
+                width += collapsedColumns.koba ? 40 : 160
                 return `${width}px`
               })() 
             }} 
@@ -404,12 +513,13 @@ export default function ClientProjectsPage() {
                 {renderCollapsibleHeader('remaining', 'Reste', true)}
                 {renderCollapsibleHeader('date', 'Date')}
                 {renderCollapsibleHeader('status', 'Statut', false, true)}
+                {renderCollapsibleHeader('koba', 'Versement (KOBA)')}
                 <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredByClient.length === 0
-                ? <TableRow><TableCell colSpan={10} className="text-center py-12 text-muted-foreground">Aucun projet client.</TableCell></TableRow>
+                ? <TableRow><TableCell colSpan={11} className="text-center py-12 text-muted-foreground">Aucun projet client.</TableCell></TableRow>
                 : filteredByClient.map((p) => {
                   const versed = versedTotal(p.id)
                   const rest   = (p.total ?? 0) - versed
@@ -439,6 +549,24 @@ export default function ClientProjectsPage() {
                           {p.status === 'actif' ? 'Actif' : p.status}
                         </Badge>
                       ), false, "text-center")}
+                      {renderCollapsibleCell('koba', (
+                        kobaUser ? (
+                          <select
+                            value={p.koba_account_id || ''}
+                            onChange={(e) => handleKobaAccountChange(p, e.target.value)}
+                            className="text-xs bg-background/50 border rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary max-w-[150px]"
+                          >
+                            <option value="">Compte NGnior</option>
+                            {kobaAccounts.map((acc) => (
+                              <option key={acc.id} value={acc.id}>
+                                {acc.nom} ({acc.type === 'portfolio' ? 'Porte.' : 'Proj.'})
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="text-xs text-muted-foreground italic">Non connecté à KOBA</span>
+                        )
+                      ))}
                       <TableCell className="px-4 py-3">
                         <div className="flex items-center gap-0.5">
                           <Button size="icon" variant="ghost" className="h-7 w-7 text-emerald-400 hover:text-emerald-300" title="Versement" onClick={() => setPaymentProject(p)}>
@@ -1631,7 +1759,34 @@ function PaymentModal({ project, onClose, onSaved }: { project: ClientProject; o
         body: JSON.stringify({ project_id: project.id, project_name: project.designation, project_custom_id: project.custom_id, client_id: project.client_id, client_name: project.client_name, type: 'versement', amount: parseFloat(amount), date, notes }),
       })
       const j = await r.json()
-      if (j.success) onSaved()
+      if (j.success) {
+        if (project.koba_account_id) {
+          const { data: { session } } = await kobaSupabase.auth.getSession()
+          if (session?.user) {
+            let pfId = project.koba_account_id
+            if (project.koba_account_type === 'project') {
+              const { data: pfData } = await kobaSupabase.from('portefeuilles').select('id')
+              if (pfData && pfData.length > 0) {
+                pfId = pfData[0].id
+              }
+            }
+
+            await kobaSupabase.from('transactions').insert({
+              id: crypto.randomUUID(),
+              user_id: session.user.id,
+              local_uuid_owner: session.user.id,
+              type: 'entree',
+              montant: parseFloat(amount),
+              portefeuille_id: pfId,
+              projet_id: project.koba_account_type === 'project' ? project.koba_account_id : null,
+              description: `${project.client_name} (${project.designation})`,
+              date_heure: new Date(date).toISOString(),
+              updated_at: new Date().toISOString()
+            })
+          }
+        }
+        onSaved()
+      }
       else if (j.tableNotFound) setTableNotFound(true)
       else setErr(j.error ?? 'Erreur')
     } catch { setErr('Erreur de connexion') }
