@@ -20,6 +20,7 @@ import ProductEditModal, { type ProductFull } from '@/components/admin/ProductEd
 import InvoicesPage from '@/components/admin/InvoicesPage'
 import ClientProjectsPage from '@/components/admin/ClientProjectsPage'
 import KobaPage from '@/components/admin/KobaPage'
+import SettingsPage from '@/components/admin/SettingsPage'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -29,7 +30,7 @@ interface Project { id: string; slug: string; title: string; tier: string; descr
 type Product = ProductFull
 interface Estimation { id: string; project_id?: string; file_name: string; total_amount: number; blocs_count: number; currency: string; created_at: string; blocs?: any[]; materiaux?: any }
 
-type TabId = 'dashboard' | 'projects' | 'client-projects' | 'categories' | 'estimations' | 'shop' | 'clients' | 'invoices' | 'koba'
+type TabId = 'dashboard' | 'projects' | 'client-projects' | 'categories' | 'estimations' | 'shop' | 'clients' | 'invoices' | 'koba' | 'settings'
 
 function fmtPrice(n: number | null | undefined) { return n != null ? n.toLocaleString('fr-FR') + ' FCFA' : '0 FCFA' }
 
@@ -676,11 +677,14 @@ export default function AdminDashboard() {
       case 'clients':     return renderClients()
       case 'invoices':    return <InvoicesPage />
       case 'koba':        return <KobaPage />
+      case 'settings':    return <SettingsPage />
       default:            return renderDashboard()
     }
   }
 
-  const currentItem = menuItems.find((m) => m.id === activeTab)
+  const currentItem = activeTab === 'settings'
+    ? { id: 'settings', label: 'Paramètres', icon: Settings }
+    : menuItems.find((m) => m.id === activeTab)
   const CurrentIcon = currentItem?.icon ?? LayoutDashboard
 
   // ─── LAYOUT ──────────────────────────────────────────────────────────────────
@@ -715,7 +719,17 @@ export default function AdminDashboard() {
           ))}
         </nav>
         <div className={`p-4 border-t ${isSidebarCollapsed ? 'flex justify-center' : ''}`}>
-          <button title={isSidebarCollapsed ? "Paramètres" : undefined} className={`flex items-center gap-3 py-3 text-muted-foreground hover:text-foreground rounded-xl hover:bg-muted/50 ${isSidebarCollapsed ? 'justify-center px-0 w-full' : 'w-full px-4'}`}>
+          <button 
+            onClick={() => setActiveTab('settings')}
+            title={isSidebarCollapsed ? "Paramètres" : undefined} 
+            className={`flex items-center gap-3 py-3 rounded-xl transition-all duration-200 ${
+              isSidebarCollapsed ? 'justify-center px-0 w-full' : 'w-full px-4'
+            } ${
+              activeTab === 'settings' 
+                ? 'bg-muted text-foreground font-semibold' 
+                : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+            }`}
+          >
             <Settings size={20} className="shrink-0" />
             {!isSidebarCollapsed && <span className="font-medium text-sm truncate">Paramètres</span>}
           </button>
