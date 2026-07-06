@@ -6,7 +6,7 @@ import {
   Search, RefreshCw, CheckCircle, XCircle, LayoutDashboard,
   Settings, Moon, Sun, Plus, UploadCloud, Edit2, Trash2,
   TrendingUp, Activity, Box, Loader2, AlertCircle,
-  X, Save, Bot, Settings2, Eye, ChevronLeft, ChevronRight, DollarSign,
+  X, Save, Bot, Settings2, Eye, ChevronLeft, ChevronRight, DollarSign, Wallet,
 } from 'lucide-react'
 import { Button }   from '@/components/ui/button'
 import { Input }    from '@/components/ui/input'
@@ -19,6 +19,7 @@ import ProjectEditModal from '@/components/admin/ProjectEditModal'
 import ProductEditModal, { type ProductFull } from '@/components/admin/ProductEditModal'
 import InvoicesPage from '@/components/admin/InvoicesPage'
 import ClientProjectsPage from '@/components/admin/ClientProjectsPage'
+import KobaPage from '@/components/admin/KobaPage'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -28,7 +29,7 @@ interface Project { id: string; slug: string; title: string; tier: string; descr
 type Product = ProductFull
 interface Estimation { id: string; project_id?: string; file_name: string; total_amount: number; blocs_count: number; currency: string; created_at: string; blocs?: any[]; materiaux?: any }
 
-type TabId = 'dashboard' | 'projects' | 'client-projects' | 'categories' | 'estimations' | 'shop' | 'clients' | 'invoices'
+type TabId = 'dashboard' | 'projects' | 'client-projects' | 'categories' | 'estimations' | 'shop' | 'clients' | 'invoices' | 'koba'
 
 function fmtPrice(n: number | null | undefined) { return n != null ? n.toLocaleString('fr-FR') + ' FCFA' : '0 FCFA' }
 
@@ -189,6 +190,7 @@ export default function AdminDashboard() {
     { id: 'estimations'as TabId,label: 'Estimations',        icon: Calculator },
     { id: 'shop'      as TabId, label: 'Boutique',            icon: ShoppingBag },
     { id: 'invoices'  as TabId, label: 'Factures & Devis',    icon: FileText },
+    { id: 'koba'      as TabId, label: 'KOBA',                icon: Wallet },
   ]
   const isLoading = loading[activeTab]
 
@@ -673,6 +675,7 @@ export default function AdminDashboard() {
       case 'shop':        return renderShop()
       case 'clients':     return renderClients()
       case 'invoices':    return <InvoicesPage />
+      case 'koba':        return <KobaPage />
       default:            return renderDashboard()
     }
   }
