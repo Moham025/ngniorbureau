@@ -393,6 +393,124 @@ function DocForm({ doc, initialClient, initialType, clients, onSave, onCancel }:
   const [aiPrompt,    setAiPrompt]    = useState(DEFAULT_AI_PROMPT)
   const [showAIPaste, setShowAIPaste] = useState(false)
   const [showPrompt,  setShowPrompt]  = useState(false)
+
+  const [isAiProcessing, setIsAiProcessing] = useState(false)
+  const [aiProcessingStatus, setAiProcessingStatus] = useState('')
+
+  useEffect(() => {
+    const handlePaste = async (e: ClipboardEvent) => {
+      const formEl = document.getElementById('doc-form')
+      if (!formEl) return
+
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      let hasImage = false;
+      let imageFile: File | null = null;
+      let textContent = '';
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.indexOf('image') !== -1) {
+          hasImage = true;
+          imageFile = item.getAsFile();
+          break;
+        } else if (item.type === 'text/plain') {
+          textContent = e.clipboardData.getData('text');
+        }
+      }
+
+      if (hasImage && imageFile) {
+        e.preventDefault();
+        const glmKeyLocal = localStorage.getItem('glm_api_key') || ''
+        if (!glmKeyLocal) {
+          alert("Veuillez d'abord configurer votre clé API GLM dans les paramètres IA.")
+          return
+        }
+        setIsAiProcessing(true)
+        setAiProcessingStatus("Extraction du texte de l'image (OCR GLM)...")
+        
+        try {
+          const reader = new FileReader()
+          reader.onloadend = async () => {
+            const base64data = reader.result as string
+            try {
+              const res = await fetch('/api/admin/glm-ocr', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-GLM-Key': glmKeyLocal
+                },
+                body: JSON.stringify({ image: base64data })
+              })
+              const j = await res.json()
+              if (!j.success) {
+                alert("Erreur OCR GLM : " + j.error)
+                setIsAiProcessing(false)
+                return
+              }
+
+              setAiProcessingStatus("Interprétation du devis/DQE par DeepSeek...")
+              const parseRes = await fetch('/api/admin/ai-parse-articles', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-DeepSeek-Key': localStorage.getItem('deepseek_api_key') || ''
+                },
+                body: JSON.stringify({ text: j.text })
+              })
+              const parseJ = await parseRes.json()
+              if (parseJ.success && Array.isArray(parseJ.items)) {
+                setItems(parseJ.items)
+              } else {
+                alert("Erreur d'interprétation DeepSeek : " + (parseJ.error || "Format non reconnu"))
+              }
+            } catch (err: any) {
+              alert("Erreur : " + err.message)
+            } finally {
+              setIsAiProcessing(false)
+            }
+          }
+          reader.readAsDataURL(imageFile)
+        } catch (err: any) {
+          alert("Erreur lors de la lecture de l'image : " + err.message)
+          setIsAiProcessing(false)
+        }
+      } else if (textContent && textContent.trim().length > 10) {
+        const activeEl = document.activeElement;
+        const isInput = activeEl?.tagName === 'INPUT' || activeEl?.tagName === 'TEXTAREA';
+        
+        if (!isInput || textContent.includes('\n') || textContent.includes(';')) {
+          e.preventDefault();
+          setIsAiProcessing(true)
+          setAiProcessingStatus("Interprétation du devis/DQE collé par DeepSeek...")
+          try {
+            const parseRes = await fetch('/api/admin/ai-parse-articles', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-DeepSeek-Key': localStorage.getItem('deepseek_api_key') || ''
+              },
+              body: JSON.stringify({ text: textContent })
+            })
+            const parseJ = await parseRes.json()
+            if (parseJ.success && Array.isArray(parseJ.items)) {
+              setItems(parseJ.items)
+            } else {
+              alert("Erreur d'interprétation DeepSeek : " + (parseJ.error || "Format non reconnu"))
+            }
+          } catch (err: any) {
+            alert("Erreur réseau : " + err.message)
+          } finally {
+            setIsAiProcessing(false)
+          }
+        }
+      }
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, []);
   
   const [aiNotesPrompt,    setAiNotesPrompt]    = useState(DEFAULT_NOTES_PROMPT)
   const [showNotesPrompt,  setShowNotesPrompt]  = useState(false)
@@ -817,7 +935,14 @@ ${autoPrint ? '<script>window.onload=()=>setTimeout(()=>window.print(),300)</scr
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden relative" id="doc-form">
+      {isAiProcessing && (
+        <div className="absolute inset-0 bg-background/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center text-center p-4">
+          <Loader2 className="animate-spin text-primary mb-3" size={36} />
+          <p className="text-sm font-semibold">{aiProcessingStatus}</p>
+          <p className="text-xs text-muted-foreground mt-1">Veuillez patienter pendant le traitement...</p>
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-3 border-b shrink-0 gap-3 flex-wrap">
@@ -1240,6 +1365,16 @@ function PromptModal({ title, subtitle, value, defaultValue, onSave, onClose }: 
   onSave: (v: string) => void; onClose: () => void
 }) {
   const [v, setV] = useState(value)
+  const [dsKey, setDsKey] = useState('')
+  const [glmKey, setGlmKey] = useState('')
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setDsKey(localStorage.getItem('deepseek_api_key') || '')
+      setGlmKey(localStorage.getItem('glm_api_key') || '')
+    }
+  }, [])
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="bg-card border rounded-2xl shadow-2xl w-full max-w-xl">
@@ -1250,8 +1385,37 @@ function PromptModal({ title, subtitle, value, defaultValue, onSave, onClose }: 
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X size={18} /></button>
         </div>
-        <div className="p-5 space-y-3">
-          <textarea value={v} onChange={(e) => setV(e.target.value)} rows={10}
+        <div className="p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-semibold text-muted-foreground mb-1">Clé API DeepSeek</label>
+              <Input 
+                type="password" 
+                placeholder="sk-..." 
+                value={dsKey} 
+                onChange={(e) => {
+                  setDsKey(e.target.value)
+                  localStorage.setItem('deepseek_api_key', e.target.value)
+                }} 
+                className="h-8 text-xs"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold text-muted-foreground mb-1">Clé API GLM (OCR)</label>
+              <Input 
+                type="password" 
+                placeholder="Clé API GLM..." 
+                value={glmKey} 
+                onChange={(e) => {
+                  setGlmKey(e.target.value)
+                  localStorage.setItem('glm_api_key', e.target.value)
+                }} 
+                className="h-8 text-xs"
+              />
+            </div>
+          </div>
+          
+          <textarea value={v} onChange={(e) => setV(e.target.value)} rows={8}
             className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none font-mono focus:outline-none focus:ring-2 focus:ring-ring" />
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => setV(defaultValue)}>Réinitialiser</Button>
