@@ -12,43 +12,53 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: 'Clé API GLM manquante' }, { status: 400 })
     }
 
-    // Call Zhipu AI API (GLM)
-    const response = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${customKey}`
-      },
-      body: JSON.stringify({
-        model: 'glm-4v-plus',
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: 'Fais l\'OCR complet de cette image. Extrais tous les textes de devis/facture/DQE (articles, désignations, quantités, prix unitaires, totaux). Retourne uniquement les textes organisés ligne par ligne de manière structurée.'
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: image
-                }
-              }
-            ]
-          }
-        ],
-        temperature: 0.1,
-      })
-    })
+    // Call Zhipu AI / Z.AI Layout Parsing API (GLM OCR)
+    // We try both open.bigmodel.cn and api.z.ai to cover all key regions
+    let response;
+    let errText = '';
+    
+    const endpoints = [
+      'https://open.bigmodel.cn/api/paas/v4/layout_parsing',
+      'https://api.z.ai/api/paas/v4/layout_parsing'
+    ];
 
-    if (!response.ok) {
-      const errText = await response.text()
-      return NextResponse.json({ success: false, error: 'Erreur GLM: ' + errText }, { status: response.status })
+    for (const url of endpoints) {
+      try {
+        response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${customKey}`
+          },
+          body: JSON.stringify({
+            model: 'glm-ocr',
+            file: image
+          })
+        });
+
+        if (response.ok) {
+          break;
+        } else {
+          errText = await response.text();
+        }
+      } catch (err: any) {
+        errText = err.message;
+      }
+    }
+
+    if (!response || !response.ok) {
+      return NextResponse.json({ success: false, error: 'Erreur GLM Layout Parsing: ' + errText }, { status: response ? response.status : 400 })
     }
 
     const data = await response.json()
-    const text = data.choices?.[0]?.message?.content ?? ''
+    let text = ''
+    if (data.layout_result && Array.isArray(data.layout_result)) {
+      text = data.layout_result.map((r: any) => r.content || '').join('\n')
+    } else if (data.choices?.[0]?.message?.content) {
+      text = data.choices[0].message.content
+    } else {
+      text = JSON.stringify(data)
+    }
 
     return NextResponse.json({ success: true, text })
   } catch (error: any) {
