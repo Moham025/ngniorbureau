@@ -8,7 +8,7 @@ import {
   ChevronLeft, ChevronRight
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { kobaSupabase } from '@/lib/supabase'
+import { kobaSupabase } from '@/lib/supabase-koba'
 
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'

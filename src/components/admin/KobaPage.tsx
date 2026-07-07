@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { User } from '@supabase/supabase-js'
-import { kobaSupabase } from '@/lib/supabase'
+import { kobaSupabase } from '@/lib/supabase-koba'
 import { 
   Wallet, FolderOpen, ArrowUpRight, ArrowDownRight, Plus, 
   RefreshCw, LogOut, ChevronLeft, Link as LinkIcon, Trash2,
@@ -169,20 +169,49 @@ export default function KobaPage() {
   const loadAccounts = async () => {
     setLoadingData(true)
     try {
-      // Load Portefeuilles
+      // Verify session is active before querying
+      const { data: { session } } = await kobaSupabase.auth.getSession()
+      console.log('[KOBA] loadAccounts — session:', session?.user?.email, 'uid:', session?.user?.id)
+
+      // Load Portefeuilles (owned — RLS may limit to user_id = auth.uid())
       const { data: pfData, error: pfErr } = await kobaSupabase.from('portefeuilles').select('*')
       if (pfErr) throw pfErr
+      console.log('[KOBA] portefeuilles returned:', pfData?.length, 'rows')
 
       // Load Projects
       const { data: prData, error: prErr } = await kobaSupabase.from('projets').select('*')
       if (prErr) throw prErr
+      console.log('[KOBA] projets returned:', prData?.length, 'rows')
+
+      // Check wallet_collaborators for shared wallets the user has access to
+      const { data: wcData } = await kobaSupabase.from('wallet_collaborators').select('wallet_id, user_id, role')
+      console.log('[KOBA] wallet_collaborators returned:', wcData?.length, 'rows')
+
+      // Find shared wallet IDs that aren't already in pfData
+      const ownedPfIds = new Set((pfData || []).map(p => p.id))
+      const sharedWalletIds = (wcData || [])
+        .filter(c => c.user_id === session?.user?.id && !ownedPfIds.has(c.wallet_id))
+        .map(c => c.wallet_id)
+
+      // Try to fetch shared wallets by ID (may work if RLS allows access via collaborator)
+      let sharedPfData: any[] = []
+      if (sharedWalletIds.length > 0) {
+        const { data: spf } = await kobaSupabase
+          .from('portefeuilles')
+          .select('*')
+          .in('id', sharedWalletIds)
+        sharedPfData = spf || []
+        console.log('[KOBA] shared portefeuilles fetched:', sharedPfData.length, 'rows')
+      }
+
+      const allPfData = [...(pfData || []), ...sharedPfData]
+      console.log('[KOBA] total portefeuilles:', allPfData.length)
 
       // Calculate project and portfolio balances by fetching all transactions
       const { data: txsData, error: txErr } = await kobaSupabase.from('transactions').select('portefeuille_id, projet_id, type, montant')
       if (txErr) throw txErr
+      console.log('[KOBA] transactions returned:', txsData?.length, 'rows')
 
-      // Fetch wallet collaborators to check if shared
-      const { data: wcData } = await kobaSupabase.from('wallet_collaborators').select('wallet_id, user_id, role')
       // Fetch project collaborators to check if shared
       const { data: pcData } = await kobaSupabase.from('projet_collaborators').select('projet_id, user_id, role')
 
@@ -217,7 +246,7 @@ export default function KobaPage() {
       }
 
       const merged: Account[] = [
-        ...(pfData || []).map(p => {
+        ...allPfData.map(p => {
           const collabs = walletCollabMap[p.id] || []
           const myCollabRow = collabs.find(c => c.user_id === user?.id)
           const myRole = myCollabRow?.role || (p.user_id === user?.id ? 'owner' : 'member')
