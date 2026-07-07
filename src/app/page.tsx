@@ -50,7 +50,10 @@ interface DashboardStats {
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<TabId>('dashboard')
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [mounted, setMounted] = useState(false)
   const { theme, setTheme } = useTheme()
+
+  useEffect(() => { setMounted(true) }, [])
 
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1)
@@ -744,8 +747,8 @@ export default function AdminDashboard() {
             <h2 className="text-2xl font-bold">{currentItem?.label}</h2>
           </div>
           <div className="flex items-center gap-3">
-            <Button variant="outline" size="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="h-10 w-10">
-              {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+            <Button variant="outline" size="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="h-10 w-10" suppressHydrationWarning>
+              {mounted ? (theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />) : <Moon size={18} />}
             </Button>
             <Button variant="outline" className="gap-2" onClick={() => fetchData(activeTab)} disabled={isLoading}>
               <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
