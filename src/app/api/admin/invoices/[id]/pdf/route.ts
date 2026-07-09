@@ -15,6 +15,9 @@ import { supabaseAdmin } from '@/lib/supabase'
 
 const CHROME_PATH = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
 
+// Génération PDF via Chromium : mémoire/durée renforcées sur Vercel
+export const maxDuration = 60
+
 async function toBase64Server(url: string): Promise<string> {
   try {
     const r = await fetch(url)
@@ -195,20 +198,30 @@ export async function GET(
     })
   }
 
-  // ── PDF mode — puppeteer-core + Chrome système ────────────────────────────
+  // ── PDF mode — puppeteer-core + Chrome (système en local, @sparticuz sur Vercel) ──
   try {
     // Dynamic import to avoid issues when puppeteer-core is not installed
     const puppeteer = await import('puppeteer-core')
 
+    // Sur Vercel/AWS Lambda : Chrome allégé embarqué. En local : Chrome installé.
+    const isServerless = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME
+    let executablePath = CHROME_PATH
+    let launchArgs: string[] = [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+    ]
+    if (isServerless) {
+      const chromium = (await import('@sparticuz/chromium')).default
+      executablePath = await chromium.executablePath()
+      launchArgs = chromium.args
+    }
+
     const browser = await puppeteer.launch({
-      executablePath: CHROME_PATH,
+      executablePath,
       headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-      ],
+      args: launchArgs,
     })
 
     try {
