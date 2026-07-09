@@ -52,11 +52,12 @@ export const API_MANIFEST: ApiEndpoint[] = [
     path: '/api/admin/agent/create-full',
     title: 'Créer client + projet + facture (1 appel)',
     description:
-      "Création complète en une requête : client (code auto), projet lié (code auto) et facture (numéro auto). " +
+      "Création complète en une requête : client (RÉUTILISÉ si client.code fourni ou nom identique, sinon créé), " +
+      "projet lié (P-{code client}-NN) et document (FAC-26-1 / DEV-26-1 / R-26-1 / FacP-26-1). " +
       "C'est la route recommandée pour les agents IA.",
     tag: 'Agent IA',
     bodyExample: {
-      client: { full_name: 'Konaté Ibrahim', phone: '+226 70 12 34 56', email: 'konate@example.com' },
+      client: { code: 'CL-26-06 (client existant — sinon omettre)', full_name: 'Konaté Ibrahim', phone: '+226 70 12 34 56' },
       project: { type: 'Plan Architectural', designation: "Villa R+1 à Ouaga 2000" },
       invoice: {
         type: 'Facture',

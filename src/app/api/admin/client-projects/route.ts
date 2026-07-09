@@ -1,30 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { generateDocNumber, generateProjectId } from '@/lib/id-generators'
 
 const MISSING = 'does not exist'
-
-// Helper to get year in 2 digits
-function getYear2(): string {
-  return new Date().getFullYear().toString().slice(2)
-}
-
-// Generate invoice number for project
-async function generateInvoiceNumber(projectCode: string, docType: string = 'Facture'): Promise<string> {
-  const year2 = getYear2()
-  const { data: existing } = await supabaseAdmin
-    .from('documents')
-    .select('number')
-    .eq('type', docType)
-  
-  const prefixDict: Record<string, string> = {
-    'Facture': 'FAC', 'Devis': 'DEV', 'Facture Proforma': 'FPR', 'Reçu': 'REC'
-  }
-  const p = prefixDict[docType] || 'DOC'
-  const globalPrefix = `${p}-${year2}-`
-  const yearSeq = (existing ?? []).filter((d) => d.number?.startsWith(globalPrefix)).length + 1
-  const seq = String(yearSeq).padStart(2, '0')
-  return `${globalPrefix}${projectCode}-${seq}`
-}
 
 export async function GET(request: NextRequest) {
   const clientId = request.nextUrl.searchParams.get('client_id')
@@ -74,31 +52,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'client_id, type et designation requis' }, { status: 400 })
     }
 
-    const year2 = getYear2()
     const code = client_code ?? 'CL-XX-00'
 
-    // Count existing projects globally in the current year
-    const { data: existing } = await supabaseAdmin
-      .from('client_projects')
-      .select('custom_id')
-
-    const yearSeq = (existing ?? []).filter(
-      (p) => p.custom_id && p.custom_id.startsWith(`P-${year2}-`)
-    ).length + 1
-    const seq = String(yearSeq).padStart(2, '0')
-
-    // Format: P-26-CL-26-01-01
-    const custom_id = `P-${year2}-${code}-${seq}`
-    
-    // Project code for invoice (without the P- prefix)
-    const projectCode = `${code}-${seq}`
+    // Schéma officiel: P-{code client}-{n° de projet DU client} (ex: P-CL-26-01-01)
+    const custom_id = await generateProjectId(code)
 
     // Handle invoice generation
     let finalInvoiceId = invoice_id || null
     
     if (generate_invoice && items && items.length > 0) {
       const docType = invoice_type || 'Facture'
-      const invoiceNumber = await generateInvoiceNumber(projectCode, docType)
+      const invoiceNumber = await generateDocNumber(docType)
       const { data: newInvoice, error: invoiceError } = await supabaseAdmin
         .from('documents')
         .insert({
@@ -135,7 +99,7 @@ export async function POST(request: NextRequest) {
       
       if (!proformaError && proforma) {
         // Create a new invoice from the proforma
-        const invoiceNumber = await generateInvoiceNumber(projectCode)
+        const invoiceNumber = await generateDocNumber('Facture')
         
         const { data: newInvoice, error: invoiceError } = await supabaseAdmin
           .from('documents')

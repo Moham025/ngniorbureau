@@ -22,42 +22,18 @@ import { supabaseAdmin, supabaseAuthAdmin } from '@/lib/supabase'
  *   { success, client, project, invoice, pdfUrl, previewUrl }
  */
 
-function getYear2() {
-  return new Date().getFullYear().toString().slice(2)
-}
-
-async function generateClientCode(): Promise<string> {
-  const year2 = getYear2()
-  const { data: { users } } = await supabaseAuthAdmin.auth.admin.listUsers({ perPage: 1000 })
-  const existingCodes = (users ?? [])
-    .map((u) => u.user_metadata?.client_code as string | undefined)
-    .filter((c): c is string => !!c && c.startsWith(`CL-${year2}-`))
-  let seq = existingCodes.length + 1
-  while (existingCodes.includes(`CL-${year2}-${String(seq).padStart(2, '0')}`)) seq++
-  return `CL-${year2}-${String(seq).padStart(2, '0')}`
-}
-
-async function generateDocNumber(type: string, projectCode: string): Promise<string> {
-  const year2 = getYear2()
-  const { data: existing } = await supabaseAdmin
-    .from('documents')
-    .select('number')
-    .eq('type', type)
-  const prefixMap: Record<string, string> = {
-    'Facture': 'FAC', 'Devis': 'DEV', 'Facture Proforma': 'FPR', 'Reçu': 'REC',
-  }
-  const p = prefixMap[type] || 'DOC'
-  const globalPrefix = `${p}-${year2}-`
-  const yearSeq = (existing ?? []).filter((d) => d.number?.startsWith(globalPrefix)).length + 1
-  const seq = String(yearSeq).padStart(2, '0')
-  return `${globalPrefix}${projectCode}-${seq}`
-}
+import {
+  generateClientCode,
+  generateProjectId,
+  generateDocNumber,
+  findExistingClient,
+} from '@/lib/id-generators'
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const { client, project, invoice } = body as {
-      client: { full_name: string; phone?: string; email?: string }
+      client: { full_name: string; phone?: string; email?: string; code?: string }
       project: { type: string; designation: string }
       invoice?: {
         type?: string
@@ -69,51 +45,60 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Validation ──────────────────────────────────────────────────────────
-    if (!client?.full_name) {
-      return NextResponse.json({ success: false, error: 'client.full_name est requis' }, { status: 400 })
+    if (!client?.full_name && !client?.code) {
+      return NextResponse.json({ success: false, error: 'client.full_name ou client.code est requis' }, { status: 400 })
     }
     if (!project?.type || !project?.designation) {
       return NextResponse.json({ success: false, error: 'project.type et project.designation sont requis' }, { status: 400 })
     }
 
-    const year2 = getYear2()
+    // ── 1. Client : RÉUTILISER s'il existe (par code ou nom exact), sinon créer ──
+    let clientId: string
+    let clientCode: string
+    let clientName: string
+    let clientEmail: string
+    let clientPhone: string
+    let clientReused = false
 
-    // ── 1. Créer le client ──────────────────────────────────────────────────
-    const clientCode = await generateClientCode()
-    const fakeEmail = client.email || `${clientCode.toLowerCase()}@ngnior.local`
+    const existingClient = await findExistingClient(client.code, client.full_name)
 
-    const { data: newUserData, error: clientError } = await supabaseAuthAdmin.auth.admin.createUser({
-      email: fakeEmail,
-      email_confirm: true,
-      user_metadata: {
-        full_name: client.full_name,
-        phone: client.phone ?? '',
-        client_code: clientCode,
-      },
-    })
+    if (existingClient) {
+      clientId = existingClient.id
+      clientCode = existingClient.code
+      clientName = existingClient.name || client.full_name || ''
+      clientEmail = existingClient.email
+      clientPhone = existingClient.phone || client.phone || ''
+      clientReused = true
+    } else {
+      clientCode = await generateClientCode()
+      const fakeEmail = client.email || `${clientCode.toLowerCase()}@ngnior.local`
 
-    if (clientError) {
-      return NextResponse.json(
-        { success: false, step: 'client', error: `Erreur création client: ${clientError.message}` },
-        { status: 500 }
-      )
+      const { data: newUserData, error: clientError } = await supabaseAuthAdmin.auth.admin.createUser({
+        email: fakeEmail,
+        email_confirm: true,
+        user_metadata: {
+          full_name: client.full_name,
+          phone: client.phone ?? '',
+          client_code: clientCode,
+        },
+      })
+
+      if (clientError) {
+        return NextResponse.json(
+          { success: false, step: 'client', error: `Erreur création client: ${clientError.message}` },
+          { status: 500 }
+        )
+      }
+
+      clientId = newUserData.user.id
+      clientName = client.full_name
+      clientEmail = client.email || fakeEmail
+      clientPhone = client.phone || ''
     }
 
-    const clientId   = newUserData.user.id
-    const clientName = client.full_name
-
-    // ── 2. Générer les IDs projet ────────────────────────────────────────────
-    const { data: existingProjects } = await supabaseAdmin
-      .from('client_projects')
-      .select('custom_id')
-
-    const projSeq = (existingProjects ?? []).filter(
-      (p) => p.custom_id?.startsWith(`P-${year2}-`)
-    ).length + 1
-
-    const projSeqStr  = String(projSeq).padStart(2, '0')
-    const customId    = `P-${year2}-${clientCode}-${projSeqStr}`
-    const projectCode = `${clientCode}-${projSeqStr}`
+    // ── 2. ID projet : P-{code client}-{n° projet du client} ────────────────
+    const customId    = await generateProjectId(clientCode)
+    const projectCode = customId.slice(2) // sans le "P-"
 
     // ── 3. Calculer les totaux ───────────────────────────────────────────────
     const invoiceType = invoice?.type || 'Facture'
@@ -130,7 +115,7 @@ export async function POST(request: NextRequest) {
     let docNumber = ''
 
     if (items.length > 0) {
-      docNumber = await generateDocNumber(invoiceType, projectCode)
+      docNumber = await generateDocNumber(invoiceType)
 
       const { data: newInvoice, error: invoiceError } = await supabaseAdmin
         .from('documents')
@@ -138,8 +123,8 @@ export async function POST(request: NextRequest) {
           type:          invoiceType,
           number:        docNumber,
           client_name:   clientName,
-          client_email:  client.email || '',
-          client_phone:  client.phone || '',
+          client_email:  clientEmail.endsWith('@ngnior.local') ? '' : clientEmail,
+          client_phone:  clientPhone,
           client_address: '',
           date:          new Date().toISOString().slice(0, 10),
           due_date:      invoice?.due_date || '',
@@ -198,8 +183,9 @@ export async function POST(request: NextRequest) {
         id:    clientId,
         code:  clientCode,
         name:  clientName,
-        email: client.email || fakeEmail,
-        phone: client.phone || '',
+        email: clientEmail,
+        phone: clientPhone,
+        reused: clientReused,
       },
       project: newProject,
       invoice: invoiceData

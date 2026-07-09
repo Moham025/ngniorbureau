@@ -1,61 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin, supabaseAuthAdmin } from '@/lib/supabase'
+import { generateDocNumber } from '@/lib/id-generators'
 
 const TABLE_MISSING_MSG = "Could not find the table 'plans.documents'"
-
-// Helper to get year in 2 digits
-function getYear2(): string {
-  return new Date().getFullYear().toString().slice(2)
-}
-
-// Generate sequential number for a document type in current year
-async function generateDocNumber(type: string, clientCode?: string, projectCode?: string): Promise<string> {
-  const year2 = getYear2()
-  const code = clientCode ?? 'CL-XX-00'
-  
-  // Get all documents of this type to count
-  const { data: existing } = await supabaseAdmin
-    .from('documents')
-    .select('number')
-    .eq('type', type)
-  
-  // Format IDs based on type
-  if (type === 'Facture Proforma') {
-    // FPR-26-{client_code}-{seq} - global sequence
-    const globalPrefix = `FPR-${year2}-`
-    const yearSeq = (existing ?? []).filter((d) => d.number?.startsWith(globalPrefix)).length + 1
-    const seq = String(yearSeq).padStart(2, '0')
-    return `FPR-${year2}-${code}-${seq}`
-  } else if (type === 'Facture' && projectCode) {
-    // FAC-26-{project_code}-{seq} - global sequence
-    const globalPrefix = `FAC-${year2}-`
-    const yearSeq = (existing ?? []).filter((d) => d.number?.startsWith(globalPrefix)).length + 1
-    const seq = String(yearSeq).padStart(2, '0')
-    return `FAC-${year2}-${projectCode}-${seq}`
-  } else if (type === 'Facture') {
-    // FAC-26-{seq}
-    const prefix = `FAC-${year2}-`
-    const yearSeq = (existing ?? []).filter((d) => d.number?.startsWith(prefix)).length + 1
-    const seq = String(yearSeq).padStart(2, '0')
-    return `FAC-${year2}-${seq}`
-  } else if (type === 'Devis') {
-    const prefix = `DEV-${year2}-`
-    const yearSeq = (existing ?? []).filter((d) => d.number?.startsWith(prefix)).length + 1
-    const seq = String(yearSeq).padStart(2, '0')
-    return `DEV-${year2}-${seq}`
-  } else if (type === 'Reçu') {
-    const prefix = `REC-${year2}-`
-    const yearSeq = (existing ?? []).filter((d) => d.number?.startsWith(prefix)).length + 1
-    const seq = String(yearSeq).padStart(2, '0')
-    return `REC-${year2}-${seq}`
-  }
-  
-  // Default: generic prefix
-  const prefix = `${type.substring(0, 3).toUpperCase()}-${year2}-`
-  const yearSeq = (existing ?? []).filter((d) => d.number?.startsWith(prefix)).length + 1
-  const seq = String(yearSeq).padStart(2, '0')
-  return `${type.substring(0, 3).toUpperCase()}-${year2}-${seq}`
-}
 
 export async function GET(request: NextRequest) {
   const type = request.nextUrl.searchParams.get('type')
@@ -108,28 +55,10 @@ export async function POST(request: NextRequest) {
     console.log('[POST /api/admin/invoices] Received:', { type, client_email, client_code, generate_number, hasNumber: !!number })
 
     // If generate_number is true, auto-generate the number based on type
+    // (schéma officiel: FAC-26-1 / DEV-26-1 / R-26-1 / FacP-26-1 — voir lib/id-generators)
     let finalNumber = number
     if (generate_number || !number) {
-      // If client_code is not provided, try to fetch it from the database
-      let finalClientCode = client_code
-      if (!client_code && client_email) {
-        try {
-          const { data: { users } } = await supabaseAuthAdmin.auth.admin.listUsers({ perPage: 1000 })
-          console.log('[POST /api/admin/invoices] Total users fetched:', users?.length)
-          const user = (users ?? []).find(u => u.email === client_email)
-          console.log('[POST /api/admin/invoices] Found user:', user?.email, 'metadata:', user?.user_metadata)
-          if (user?.user_metadata?.client_code) {
-            finalClientCode = user.user_metadata.client_code as string
-            console.log('[POST /api/admin/invoices] Found client_code from email:', finalClientCode)
-          } else {
-            // Fallback: generate a client code from the email if not found
-            console.log('[POST /api/admin/invoices] No client_code in user metadata for:', client_email)
-          }
-        } catch (err) {
-          console.error('[POST /api/admin/invoices] Error fetching users:', err)
-        }
-      }
-      finalNumber = await generateDocNumber(type, finalClientCode, project_code)
+      finalNumber = await generateDocNumber(type)
       console.log('[POST /api/admin/invoices] Generated number:', finalNumber)
     }
 
