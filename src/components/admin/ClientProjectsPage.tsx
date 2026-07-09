@@ -1140,12 +1140,21 @@ ${print ? '<script>window.onload=()=>setTimeout(()=>window.print(),400)</script>
               {/* Buttons */}
               <div className="flex gap-2">
                 <Button onClick={openReceiptPreview} variant="outline" className="flex-1 gap-2 border-foreground hover:bg-foreground hover:text-background">
-                  <Eye size={15} /> Aperçu du Reçu
+                  <Eye size={15} /> Aperçu rapide
                 </Button>
-                <Button onClick={printReceipt} className="flex-1 gap-2 bg-foreground text-background hover:bg-foreground/90">
-                  <Printer size={15} /> Télécharger (PDF)
+                <Button
+                  onClick={() => window.open(`/api/admin/client-projects/${project.id}/recu`, '_blank')}
+                  disabled={versed <= 0}
+                  title={versed <= 0 ? 'Aucun versement enregistré — rien à reçuter' : 'Génère (ou récupère) le reçu officiel R-26-N, numéroté et archivé dans les documents'}
+                  className="flex-1 gap-2 bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50"
+                >
+                  <Receipt size={15} /> Reçu officiel (PDF)
                 </Button>
               </div>
+              <p className="text-[11px] text-muted-foreground mt-2">
+                Le <strong>Reçu officiel</strong> est numéroté (R-26-…), enregistré dans « Factures &amp; Devis »
+                et identique à celui envoyé par le bot WhatsApp. Si aucun nouveau versement, le reçu existant est réutilisé.
+              </p>
             </div>
           )}
         </div>
