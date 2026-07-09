@@ -213,6 +213,45 @@ export const API_MANIFEST: ApiEndpoint[] = [
     aiUsable: false,
   },
 
+  // ── Versements & Reçus ────────────────────────────────────────────────────
+  {
+    method: 'GET',
+    path: '/api/admin/project-transactions',
+    title: "Lister les versements d'un projet",
+    description: 'Tous les versements, ou ceux d’un projet avec ?project_id=UUID (référence, montant, date, notes).',
+    tag: 'Projets',
+    queryParams: [{ name: 'project_id', description: 'UUID du projet' }],
+    aiUsable: true,
+  },
+  {
+    method: 'POST',
+    path: '/api/admin/project-transactions',
+    title: 'Enregistrer un versement sur un projet',
+    description: 'Ajoute un paiement (référence auto VER-26-...). Le reste à payer se déduit du coût total du projet.',
+    tag: 'Projets',
+    bodyExample: {
+      project_id: 'uuid-projet',
+      project_custom_id: 'P-26-CL-26-01-01',
+      project_name: 'Villa R+1 à Ouaga 2000',
+      client_id: 'uuid-client',
+      client_name: 'Konaté Ibrahim',
+      amount: 500000,
+      notes: 'Avance à la signature',
+    },
+    aiUsable: true,
+  },
+  {
+    method: 'GET',
+    path: '/api/admin/client-projects/{id}/recu',
+    title: "Reçu de paiement officiel d'un projet (PDF)",
+    description:
+      'Génère le reçu (versements + total reçu + reste à payer), le numérote R-26-N et l’enregistre dans les documents. ' +
+      '?format=html pour prévisualiser. Réutilise le dernier reçu si aucun nouveau versement.',
+    tag: 'Projets',
+    queryParams: [{ name: 'format', description: 'pdf (défaut) | html' }],
+    aiUsable: true,
+  },
+
   // ── Système ───────────────────────────────────────────────────────────────
   {
     method: 'GET',

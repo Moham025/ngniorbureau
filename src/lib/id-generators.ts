@@ -2,8 +2,8 @@
  * GÉNÉRATEURS D'IDENTIFIANTS — source unique de vérité.
  *
  * Schéma officiel NGnior Conception :
- *   Client            CL-26-01      (CL-année-rang d'inscription, padded 2)
- *   Projet            P-CL-26-01-01 (P-{code client}-{n° de projet DU client}, padded 2)
+ *   Client            CL-26-01         (CL-année-rang d'inscription, padded 2)
+ *   Projet            P-26-CL-26-01-01 (P-année-{code client}-{n° du projet}, padded 2)
  *   Facture           FAC-26-1      (FAC-année-séquence de l'année)
  *   Devis             DEV-26-1
  *   Reçu              R-26-1
@@ -87,19 +87,25 @@ export async function findExistingClient(code?: string, fullName?: string):
 
 // ── Projets ──────────────────────────────────────────────────────────────────
 
-/** P-CL-26-01-01 : numéro de projet PROPRE à ce client */
+/** P-26-CL-26-01-01 : P-année-{code client}-{séquence de l'année} */
 export async function generateProjectId(clientCode: string): Promise<string> {
+  const year2 = getYear2()
   const { data: existing } = await supabaseAdmin
     .from('client_projects')
     .select('custom_id')
-    .eq('client_code', clientCode)
 
   const ids = (existing ?? []).map((p) => p.custom_id as string).filter(Boolean)
-  const prefix = `P-${clientCode}-`
-  // max+1 sur le nouveau format ; les anciens formats comptent dans le rang de départ
-  const legacyCount = ids.filter((i) => !i.startsWith(prefix)).length
-  const next = Math.max(maxNumericSuffix(ids, prefix), legacyCount) + 1
-  return `${prefix}${String(next).padStart(2, '0')}`
+  // Séquence annuelle globale = max du dernier segment numérique parmi P-26-*
+  let max = 0
+  for (const id of ids) {
+    if (!id.startsWith(`P-${year2}-`)) continue
+    const last = id.split('-').pop() || ''
+    if (/^\d+$/.test(last)) {
+      const n = parseInt(last, 10)
+      if (n > max) max = n
+    }
+  }
+  return `P-${year2}-${clientCode}-${String(max + 1).padStart(2, '0')}`
 }
 
 // ── Documents ────────────────────────────────────────────────────────────────
