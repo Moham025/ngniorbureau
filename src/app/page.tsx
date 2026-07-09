@@ -6,7 +6,8 @@ import {
   Search, RefreshCw, CheckCircle, XCircle, LayoutDashboard,
   Settings, Moon, Sun, Plus, UploadCloud, Edit2, Trash2,
   TrendingUp, Activity, Box, Loader2, AlertCircle,
-  X, Save, Bot, Settings2, Eye, ChevronLeft, ChevronRight, DollarSign, Wallet,
+  X, Save, Bot, Settings2, Eye, ChevronLeft, ChevronRight, ChevronDown, DollarSign, Wallet,
+  Store,
 } from 'lucide-react'
 import { Button }   from '@/components/ui/button'
 import { Input }    from '@/components/ui/input'
@@ -50,6 +51,7 @@ interface DashboardStats {
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<TabId>('dashboard')
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [isNgMarketOpen, setIsNgMarketOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   const { theme, setTheme } = useTheme()
 
@@ -185,17 +187,23 @@ export default function AdminDashboard() {
 
   // ─── Menu ────────────────────────────────────────────────────────────────────
 
+  // Outils du bureau (gestion interne)
   const menuItems = [
     { id: 'dashboard' as TabId, label: 'Tableau de bord',   icon: LayoutDashboard },
     { id: 'clients'   as TabId, label: 'Gestion des clients', icon: Users },
     { id: 'client-projects' as TabId, label: 'Projets clients', icon: FolderOpen },
+    { id: 'invoices'  as TabId, label: 'Factures & Devis',    icon: FileText },
+    { id: 'koba'      as TabId, label: 'KOBA',                icon: Wallet },
+  ]
+
+  // Outils NGMarket : publication de contenu sur ngniorconception.com
+  const ngMarketItems = [
     { id: 'projects'  as TabId, label: 'Projets & Fichiers', icon: FolderOpen },
     { id: 'categories'as TabId, label: 'Catégories',         icon: Tags },
     { id: 'estimations'as TabId,label: 'Estimations',        icon: Calculator },
     { id: 'shop'      as TabId, label: 'Boutique',            icon: ShoppingBag },
-    { id: 'invoices'  as TabId, label: 'Factures & Devis',    icon: FileText },
-    { id: 'koba'      as TabId, label: 'KOBA',                icon: Wallet },
   ]
+  const isNgMarketTab = ngMarketItems.some((i) => i.id === activeTab)
   const isLoading = loading[activeTab]
 
   // ─── DASHBOARD ───────────────────────────────────────────────────────────────
@@ -720,6 +728,54 @@ export default function AdminDashboard() {
               {!isSidebarCollapsed && <span className="text-sm truncate">{label}</span>}
             </button>
           ))}
+
+          {/* ── NGMarket : outils de publication sur ngniorconception.com ── */}
+          <div className="pt-3">
+            <button
+              onClick={() => setIsNgMarketOpen((o) => !o)}
+              title={isSidebarCollapsed ? 'NGMarket — publication sur le site' : undefined}
+              className={`flex items-center gap-3 py-3 rounded-xl transition-all duration-200 border ${
+                isSidebarCollapsed ? 'justify-center px-0 w-full' : 'w-full px-4'
+              } ${
+                isNgMarketTab || isNgMarketOpen
+                  ? 'border-amber-500/40 bg-amber-500/10 text-foreground font-semibold'
+                  : 'border-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+              }`}
+            >
+              <Store size={20} className="shrink-0 text-amber-500" />
+              {!isSidebarCollapsed && (
+                <>
+                  <span className="text-sm truncate flex-1 text-left">NGMarket</span>
+                  <ChevronDown
+                    size={15}
+                    className={`shrink-0 transition-transform duration-200 ${(isNgMarketOpen || isNgMarketTab) ? '' : '-rotate-90'}`}
+                  />
+                </>
+              )}
+            </button>
+
+            {(isNgMarketOpen || isNgMarketTab) && (
+              <div className={`mt-1 space-y-1 ${isSidebarCollapsed ? '' : 'ml-3 pl-2 border-l-2 border-amber-500/30'}`}>
+                {!isSidebarCollapsed && (
+                  <p className="px-4 pt-1 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground/70">
+                    Publie sur ngniorconception.com
+                  </p>
+                )}
+                {ngMarketItems.map(({ id, label, icon: Icon }) => (
+                  <button key={id} onClick={() => setActiveTab(id)}
+                    title={isSidebarCollapsed ? label : undefined}
+                    className={`flex items-center gap-3 py-2.5 rounded-xl transition-all duration-200 ${
+                      isSidebarCollapsed ? 'justify-center px-0 w-full' : 'w-full px-4'
+                    } ${
+                      activeTab === id ? 'bg-muted text-foreground font-semibold' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                    }`}>
+                    <Icon size={18} className="shrink-0" />
+                    {!isSidebarCollapsed && <span className="text-sm truncate">{label}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </nav>
         <div className={`p-4 border-t ${isSidebarCollapsed ? 'flex justify-center' : ''}`}>
           <button 
