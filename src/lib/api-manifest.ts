@@ -241,6 +241,21 @@ export const API_MANIFEST: ApiEndpoint[] = [
     aiUsable: true,
   },
   {
+    method: 'DELETE',
+    path: '/api/admin/project-transactions/{id}',
+    title: 'Supprimer un versement',
+    description:
+      "Supprime définitivement un versement. {id} accepte l'UUID de la transaction OU sa référence VER-26-.... " +
+      'Retrouver les versements avec GET /api/admin/project-transactions?project_id=UUID. ' +
+      'Si une référence correspond à plusieurs versements, la route renvoie 409 avec la liste — utiliser alors l’UUID.',
+    tag: 'Projets',
+    responseExample: {
+      success: true,
+      deleted: { id: 'uuid', reference: 'VER-26-104512', amount: 500000, project_custom_id: 'P-26-CL-26-01-01' },
+    },
+    aiUsable: true,
+  },
+  {
     method: 'GET',
     path: '/api/admin/client-projects/{id}/recu',
     title: "Reçu de paiement officiel d'un projet (PDF)",

@@ -625,6 +625,7 @@ export default function ClientProjectsPage() {
           project={paymentProject}
           onClose={() => setPaymentProject(null)}
           onSaved={() => { setPaymentProject(null); fetchProjects(); fetchTransactions() }}
+          onChanged={() => { fetchProjects(); fetchTransactions() }}
         />
       )}
 
@@ -2016,13 +2017,43 @@ function ProjectFormModal({ editing, initialClientId, clients, invoices, proform
 
 // ─── Payment Modal ─────────────────────────────────────────────────────────────
 
-function PaymentModal({ project, onClose, onSaved }: { project: ClientProject; onClose: () => void; onSaved: () => void }) {
+function PaymentModal({ project, onClose, onSaved, onChanged }: { project: ClientProject; onClose: () => void; onSaved: () => void; onChanged?: () => void }) {
   const [amount, setAmount] = useState('')
   const [date,   setDate]   = useState(new Date().toISOString().slice(0, 10))
   const [notes,  setNotes]  = useState('')
   const [saving, setSaving] = useState(false)
   const [err,    setErr]    = useState('')
   const [tableNotFound, setTableNotFound] = useState(false)
+  const [history, setHistory] = useState<Transaction[]>([])
+  const [loadingHistory, setLoadingHistory] = useState(true)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  const fetchHistory = useCallback(async () => {
+    try {
+      const r = await fetch(`/api/admin/project-transactions?project_id=${project.id}`)
+      const j = await r.json()
+      if (j.success) setHistory(j.data ?? [])
+    } catch { /* silencieux — l'historique est informatif */ }
+    finally { setLoadingHistory(false) }
+  }, [project.id])
+
+  useEffect(() => { fetchHistory() }, [fetchHistory])
+
+  const handleDelete = async (txId: string) => {
+    setDeletingId(txId); setErr('')
+    try {
+      const r = await fetch(`/api/admin/project-transactions/${txId}`, { method: 'DELETE' })
+      const j = await r.json()
+      if (j.success) {
+        setHistory(prev => prev.filter(t => t.id !== txId))
+        onChanged?.()
+      } else setErr(j.error ?? 'Suppression impossible')
+    } catch { setErr('Erreur de connexion') }
+    finally { setDeletingId(null); setConfirmDeleteId(null) }
+  }
+
+  const totalVersed = history.reduce((s, t) => s + (t.amount || 0), 0)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -2088,6 +2119,44 @@ function PaymentModal({ project, onClose, onSaved }: { project: ClientProject; o
               </div>
             )}
           </div>
+
+          {/* Historique des versements existants (avec suppression) */}
+          {loadingHistory ? (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 size={12} className="animate-spin" /> Chargement des versements…</div>
+          ) : history.length > 0 && (
+            <div className="rounded-lg border overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-2 bg-muted/50 border-b">
+                <span className="text-xs font-bold uppercase text-muted-foreground">Versements existants ({history.length})</span>
+                <span className="text-xs font-semibold text-emerald-400">{totalVersed.toLocaleString('fr-FR')} F CFA versés</span>
+              </div>
+              <div className="max-h-40 overflow-y-auto divide-y">
+                {history.map(tx => (
+                  <div key={tx.id} className="flex items-center gap-2 px-3 py-1.5 text-sm">
+                    <div className="flex-1 min-w-0">
+                      <span className="font-semibold">{(tx.amount || 0).toLocaleString('fr-FR')} F</span>
+                      <span className="text-xs text-muted-foreground ml-2">{tx.date}</span>
+                      {tx.notes && <span className="text-xs text-muted-foreground ml-2 truncate">— {tx.notes}</span>}
+                    </div>
+                    <span className="font-mono text-[10px] text-muted-foreground shrink-0">{tx.reference}</span>
+                    {confirmDeleteId === tx.id ? (
+                      <span className="flex items-center gap-1 shrink-0">
+                        <button type="button" onClick={() => handleDelete(tx.id)} disabled={deletingId === tx.id}
+                          className="text-xs font-semibold text-destructive hover:underline disabled:opacity-50">
+                          {deletingId === tx.id ? <Loader2 size={12} className="animate-spin" /> : 'Supprimer ?'}
+                        </button>
+                        <button type="button" onClick={() => setConfirmDeleteId(null)} className="text-xs text-muted-foreground hover:underline">Non</button>
+                      </span>
+                    ) : (
+                      <button type="button" onClick={() => setConfirmDeleteId(tx.id)} title="Supprimer ce versement"
+                        className="shrink-0 text-muted-foreground hover:text-destructive transition-colors">
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm text-muted-foreground mb-1.5">Montant du versement (F CFA) *</label>
