@@ -19,7 +19,7 @@ export type ApiEndpoint = {
   path: string
   title: string
   description: string
-  tag: 'Agent IA' | 'Factures' | 'Clients' | 'Projets' | 'Système'
+  tag: 'Agent IA' | 'Factures' | 'Clients' | 'Projets' | 'NGMarket' | 'Système'
   queryParams?: ApiParam[]
   bodyExample?: unknown
   responseExample?: unknown
@@ -264,6 +264,42 @@ export const API_MANIFEST: ApiEndpoint[] = [
       '?format=html pour prévisualiser. Réutilise le dernier reçu si aucun nouveau versement.',
     tag: 'Projets',
     queryParams: [{ name: 'format', description: 'pdf (défaut) | html' }],
+    aiUsable: true,
+  },
+
+  // ── NGMarket (catalogue public) ───────────────────────────────────────────
+  {
+    method: 'GET',
+    path: '/api/admin/projects',
+    title: 'Catalogue NGMarket : plans/projets à vendre',
+    description:
+      'Les projets du catalogue public (www.ngniorconception.com) : titre, slug, catégorie, tier, ' +
+      'prix FCFA, description, image de couverture (cover_url), statut actif. ' +
+      'Utilisé par le bot WhatsApp pour présenter les modèles aux clients.',
+    tag: 'NGMarket',
+    queryParams: [
+      { name: 'search', description: 'Recherche par titre' },
+      { name: 'category', description: 'UUID de la catégorie' },
+      { name: 'status', description: 'Actif | Brouillon' },
+    ],
+    responseExample: {
+      success: true,
+      data: [{ id: 'uuid', slug: 'villa-r1-moderne', title: 'Villa R+1 moderne', price_fcfa: 250000, cover_url: 'https://...', is_active: true, categories: { slug: 'villas', label: 'Villas' } }],
+    },
+    aiUsable: true,
+  },
+  {
+    method: 'GET',
+    path: '/api/admin/projects/{id}/files',
+    title: "Fichiers/images d'un projet du catalogue",
+    description:
+      'Tous les fichiers du projet (images preview, PDF, DWG...) avec leur public_url. ' +
+      'Filtrer sur mime_type image/* pour récupérer les photos à envoyer (ex. via WhatsApp).',
+    tag: 'NGMarket',
+    responseExample: {
+      success: true,
+      data: [{ id: 'uuid', file_name: 'facade.webp', file_type: 'image_preview', mime_type: 'image/webp', public_url: 'https://...' }],
+    },
     aiUsable: true,
   },
 

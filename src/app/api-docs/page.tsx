@@ -16,7 +16,7 @@ const METHOD_STYLE: Record<string, string> = {
   DELETE: 'bg-red-500/15 text-red-600 dark:text-red-400',
 }
 
-const TAGS = ['Tous', 'Agent IA', 'Factures', 'Clients', 'Projets', 'Système'] as const
+const TAGS = ['Tous', 'Agent IA', 'Factures', 'Clients', 'Projets', 'NGMarket', 'Système'] as const
 
 function curlFor(ep: ApiEndpoint): string {
   const base = typeof window !== 'undefined' ? window.location.origin : ''
