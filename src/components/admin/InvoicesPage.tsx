@@ -389,6 +389,38 @@ function DocForm({ doc, initialClient, initialType, clients, onSave, onCancel }:
   const [saving,  setSaving]  = useState(false)
   const [error,   setError]   = useState('')
 
+  // Validation d'une proforma → facture définitive + projet
+  const isProforma = isEdit && type === 'Facture Proforma' && doc?.status !== 'converted'
+  const [showValidate, setShowValidate] = useState(false)
+  const [validating,   setValidating]   = useState(false)
+  const [projType,     setProjType]     = useState<string>('Autre')
+  const PROJECT_TYPES = ['Plan Architectural', 'Etude Ingénierie',
+    'Plan Architectural et Etude Ingénierie', 'Construction', 'Suivi Contrôle', 'Autre']
+
+  const handleValidateProforma = async () => {
+    if (!doc?.id) return
+    setValidating(true); setError('')
+    try {
+      const r = await fetch('/api/admin/agent/validate-proforma', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proforma_id: doc.id, project_type: projType }),
+      })
+      const j = await r.json()
+      if (j.success) {
+        setShowValidate(false)
+        const toast = document.createElement('div')
+        toast.className = 'fixed top-4 right-4 bg-emerald-500 text-white px-4 py-2 rounded-lg shadow-lg z-[100]'
+        toast.textContent = `✅ Facture ${j.facture?.number} générée + projet ${j.project?.custom_id}`
+        document.body.appendChild(toast)
+        setTimeout(() => document.body.removeChild(toast), 3500)
+        onSave()
+      } else {
+        setError(j.error ?? 'Validation impossible')
+      }
+    } catch { setError('Erreur de connexion') }
+    finally { setValidating(false) }
+  }
+
   // AI
   const [aiPrompt,    setAiPrompt]    = useState(DEFAULT_AI_PROMPT)
   const [showAIPaste, setShowAIPaste] = useState(false)
@@ -1171,6 +1203,14 @@ ${autoPrint ? '<script>window.onload=()=>setTimeout(()=>window.print(),300)</scr
       {/* Footer */}
       <div className="shrink-0 px-5 py-3 border-t bg-card sticky bottom-0 z-50 mt-auto shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
         {error && <p className="text-destructive text-xs mb-2">{error}</p>}
+        {isProforma && (
+          <Button
+            onClick={() => setShowValidate(true)}
+            className="w-full gap-2 mb-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            <CheckCircle size={15} /> Valider (générer la facture définitive)
+          </Button>
+        )}
         <div className="flex gap-2">
           <Button variant="outline" onClick={onCancel} className="flex-1">Annuler</Button>
           <Button id="btn-save-invoice" onClick={handleSave} disabled={saving} className="flex-1 gap-2">
@@ -1179,6 +1219,32 @@ ${autoPrint ? '<script>window.onload=()=>setTimeout(()=>window.print(),300)</scr
           </Button>
         </div>
       </div>
+
+      {/* Modale : choix du type de projet pour la validation */}
+      {showValidate && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4" onClick={() => setShowValidate(false)}>
+          <div className="bg-card border rounded-2xl w-full max-w-md p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-bold text-lg mb-1">Valider la proforma</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Génère la facture définitive <b>{number}</b> et crée le projet lié. La proforma est conservée.
+            </p>
+            <label className="block text-sm text-muted-foreground mb-1.5">Type de projet *</label>
+            <select value={projType} onChange={(e) => setProjType(e.target.value)}
+              className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm mb-4">
+              {PROJECT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+            {error && <p className="text-destructive text-xs mb-2">{error}</p>}
+            <div className="flex gap-3 justify-end">
+              <Button variant="outline" onClick={() => setShowValidate(false)}>Annuler</Button>
+              <Button onClick={handleValidateProforma} disabled={validating}
+                className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
+                {validating ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+                Générer la facture
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ══ Modals ══════════════════════════════════════════════════════════════ */}
 

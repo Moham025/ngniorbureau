@@ -635,6 +635,7 @@ export default function ClientProjectsPage() {
           project={docProject}
           transactions={projTx(docProject.id)}
           onClose={() => setDocProject(null)}
+          onValidated={() => { setDocProject(null); fetchProjects(); fetchInvoices() }}
         />
       )}
     </div>
@@ -670,14 +671,38 @@ function Modal({ title, children, onClose, wide }: { title: string; children: Re
 
 // ─── Doc / Receipt Modal ───────────────────────────────────────────────────────
 
-function DocModal({ project, transactions, onClose }: {
+function DocModal({ project, transactions, onClose, onValidated }: {
   project: ClientProject
   transactions: Transaction[]
   onClose: () => void
+  onValidated?: () => void
 }) {
   const [tab, setTab] = useState<'factures' | 'recus'>('factures')
   const [linkedInvoice, setLinkedInvoice] = useState<any | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+
+  // Validation d'une proforma liée (données héritées)
+  const [showValidate, setShowValidate] = useState(false)
+  const [validating, setValidating] = useState(false)
+  const [projType, setProjType] = useState('Autre')
+  const [validateErr, setValidateErr] = useState('')
+  const PROJECT_TYPES = ['Plan Architectural', 'Etude Ingénierie',
+    'Plan Architectural et Etude Ingénierie', 'Construction', 'Suivi Contrôle', 'Autre']
+
+  const handleValidate = async () => {
+    if (!linkedInvoice?.id) return
+    setValidating(true); setValidateErr('')
+    try {
+      const r = await fetch('/api/admin/agent/validate-proforma', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proforma_id: linkedInvoice.id, project_type: projType }),
+      })
+      const j = await r.json()
+      if (j.success) { setShowValidate(false); onValidated?.() }
+      else setValidateErr(j.error ?? 'Validation impossible')
+    } catch { setValidateErr('Erreur de connexion') }
+    finally { setValidating(false) }
+  }
 
   useEffect(() => {
     if (!project.invoice_id) return
@@ -1071,12 +1096,20 @@ ${print ? '<script>window.onload=()=>setTimeout(()=>window.print(),400)</script>
                         const html = await generateInvoiceHtml(linkedInvoice, true);
                         const blob = new Blob([html], { type: 'text/html' })
                         window.open(URL.createObjectURL(blob), '_blank')
-                      }} 
+                      }}
                       className="flex-1 gap-2 bg-foreground text-background hover:bg-foreground/90"
                     >
                       <Printer size={15} /> Télécharger (PDF)
                     </Button>
                   </div>
+
+                  {/* Valider si c'est une proforma non convertie */}
+                  {linkedInvoice.type === 'Facture Proforma' && linkedInvoice.status !== 'converted' && (
+                    <Button onClick={() => setShowValidate(true)}
+                      className="w-full gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
+                      <CheckCircle size={15} /> Valider (générer la facture définitive)
+                    </Button>
+                  )}
                 </>
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
@@ -1178,6 +1211,32 @@ ${print ? '<script>window.onload=()=>setTimeout(()=>window.print(),400)</script>
                 </div>
               </div>
               <iframe src={previewUrl} className="w-full flex-1 bg-white" title="Aperçu" />
+            </div>
+          </div>
+        )}
+
+        {/* ── Modal : choix du type de projet pour valider la proforma ── */}
+        {showValidate && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4" onClick={() => setShowValidate(false)}>
+            <div className="bg-card border rounded-2xl w-full max-w-md p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <h3 className="font-bold text-lg mb-1">Valider la proforma</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                Génère la facture définitive et crée le projet lié. La proforma est conservée.
+              </p>
+              <label className="block text-sm text-muted-foreground mb-1.5">Type de projet *</label>
+              <select value={projType} onChange={(e) => setProjType(e.target.value)}
+                className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm mb-4">
+                {PROJECT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+              {validateErr && <p className="text-destructive text-xs mb-2">{validateErr}</p>}
+              <div className="flex gap-3 justify-end">
+                <Button variant="outline" onClick={() => setShowValidate(false)}>Annuler</Button>
+                <Button onClick={handleValidate} disabled={validating}
+                  className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
+                  {validating ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+                  Générer la facture
+                </Button>
+              </div>
             </div>
           </div>
         )}

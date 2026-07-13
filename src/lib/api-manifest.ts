@@ -94,6 +94,30 @@ export const API_MANIFEST: ApiEndpoint[] = [
     aiUsable: true,
   },
   {
+    method: 'POST',
+    path: '/api/admin/agent/validate-proforma',
+    title: 'Valider une proforma → Facture + Projet',
+    description:
+      "Transforme une Facture Proforma en FACTURE définitive (numéro FAC), crée le " +
+      'PROJET lié à cette facture, et conserve un lien vers la proforma ' +
+      '(source_proforma_id) pour le retour arrière. La proforma est marquée ' +
+      "'converted'. Garde-fous : refuse si déjà validée. Le client est réutilisé " +
+      'sinon créé (depuis la proforma ou fourni). project_type requis.',
+    tag: 'Agent IA',
+    bodyExample: {
+      proforma_number: 'FacP-26-2',
+      project_type: 'Plan Architectural et Etude Ingénierie',
+      client: { full_name: 'OUEDRAOGO Alassane', phone: '+226 70 00 00 00' },
+    },
+    responseExample: {
+      success: true,
+      facture: { number: 'FAC-26-CL-26-12-01-01', total: 1550000 },
+      project: { custom_id: 'P-26-CL-26-12-01' },
+      client: { code: 'CL-26-12', name: 'OUEDRAOGO Alassane', reused: false },
+    },
+    aiUsable: true,
+  },
+  {
     method: 'GET',
     path: '/api/admin/agent/invoice',
     title: "Lire un document AVEC ses articles",
