@@ -14,7 +14,16 @@ export async function PUT(
       .eq('id', id)
       .select()
       .single()
-    if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 })
+    if (error) {
+      if (error.message.includes('archived')) {
+        return NextResponse.json({
+          success: false,
+          needsMigration: true,
+          error: "Colonne 'archived' manquante. Lancer : ALTER TABLE plans.client_projects ADD COLUMN IF NOT EXISTS archived boolean DEFAULT false;",
+        }, { status: 400 })
+      }
+      return NextResponse.json({ success: false, error: error.message }, { status: 500 })
+    }
     return NextResponse.json({ success: true, data })
   } catch {
     return NextResponse.json({ success: false, error: 'Erreur serveur' }, { status: 500 })

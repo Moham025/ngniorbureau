@@ -345,11 +345,23 @@ export default function ClientProjectsPage() {
   const archivedCount = projects.filter((p) => p.archived).length
 
   const toggleArchive = async (p: ClientProject) => {
-    await fetch(`/api/admin/client-projects/${p.id}`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ archived: !p.archived }),
-    })
-    fetchProjects()
+    try {
+      const r = await fetch(`/api/admin/client-projects/${p.id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archived: !p.archived }),
+      })
+      const j = await r.json().catch(() => ({ success: false }))
+      if (!j.success) {
+        if (j.needsMigration || (j.error && String(j.error).includes('archived'))) {
+          alert("Colonne 'archived' manquante. Lancer dans Supabase :\n\n" +
+            'ALTER TABLE plans.client_projects ADD COLUMN IF NOT EXISTS archived boolean DEFAULT false;')
+        } else {
+          alert('Archivage impossible : ' + (j.error ?? 'erreur serveur'))
+        }
+        return
+      }
+      fetchProjects()
+    } catch { alert('Erreur de connexion') }
   }
 
   const selectedClientObjFilter = clientFilter !== 'Tout' ? clients.find(c => c.id === clientFilter) : null;
