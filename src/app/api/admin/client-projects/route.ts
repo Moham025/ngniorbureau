@@ -6,10 +6,24 @@ const MISSING = 'does not exist'
 
 export async function GET(request: NextRequest) {
   const clientId = request.nextUrl.searchParams.get('client_id')
-  let query = supabaseAdmin.from('client_projects').select('*').order('created_at', { ascending: false })
-  if (clientId) query = query.eq('client_id', clientId)
+  // archived: absent/défaut = non archivés seulement ; 'all' = tout ; 'only' = archivés
+  const archivedParam = request.nextUrl.searchParams.get('archived')
 
-  const { data, error } = await query
+  const build = (withArchivedFilter: boolean) => {
+    let q = supabaseAdmin.from('client_projects').select('*').order('created_at', { ascending: false })
+    if (clientId) q = q.eq('client_id', clientId)
+    if (withArchivedFilter) {
+      if (archivedParam === 'only') q = q.eq('archived', true)
+      else if (archivedParam !== 'all') q = q.not('archived', 'is', true)
+    }
+    return q
+  }
+
+  let { data, error } = await build(true)
+  // Tolérance : si la colonne 'archived' n'existe pas encore, relancer sans le filtre
+  if (error && error.message.includes('archived')) {
+    ;({ data, error } = await build(false))
+  }
   if (error) {
     if (error.message.includes(MISSING)) return NextResponse.json({ success: true, data: [], tableNotFound: true })
     return NextResponse.json({ success: false, error: error.message }, { status: 500 })

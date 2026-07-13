@@ -263,9 +263,15 @@ export const API_MANIFEST: ApiEndpoint[] = [
     method: 'GET',
     path: '/api/admin/client-projects',
     title: 'Lister les projets clients',
-    description: "Tous les projets, ou ceux d'un client avec ?client_id=UUID. Le total est enrichi depuis la facture liée.",
+    description:
+      "Tous les projets, ou ceux d'un client avec ?client_id=UUID. Le total est enrichi " +
+      'depuis la facture liée. Par défaut les projets archivés sont EXCLUS ; ' +
+      '?archived=all pour tout, ?archived=only pour uniquement les archivés.',
     tag: 'Projets',
-    queryParams: [{ name: 'client_id', description: "UUID du client" }],
+    queryParams: [
+      { name: 'client_id', description: 'UUID du client' },
+      { name: 'archived', description: 'all (tout) | only (archivés) | absent (non archivés)' },
+    ],
     aiUsable: true,
   },
   {
@@ -284,12 +290,23 @@ export const API_MANIFEST: ApiEndpoint[] = [
     aiUsable: true,
   },
   {
+    method: 'PUT',
+    path: '/api/admin/client-projects/{id}',
+    title: 'Modifier / archiver un projet',
+    description:
+      "Met à jour un projet. Pour archiver/désarchiver : { archived: true|false } " +
+      '(nécessite la colonne client_projects.archived). Sert aussi à réaffecter le client.',
+    tag: 'Projets',
+    bodyExample: { archived: true },
+    aiUsable: true,
+  },
+  {
     method: 'DELETE',
     path: '/api/admin/client-projects/{id}',
     title: 'Supprimer un projet',
-    description: 'Suppression définitive du projet.',
+    description: 'Suppression définitive du projet ET de ses versements liés (cascade).',
     tag: 'Projets',
-    aiUsable: false,
+    aiUsable: true,
   },
 
   // ── Versements & Reçus ────────────────────────────────────────────────────

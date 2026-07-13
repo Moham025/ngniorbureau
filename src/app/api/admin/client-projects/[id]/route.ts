@@ -26,6 +26,11 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
+
+  // Cascade : supprimer d'abord les versements liés (best effort — la table
+  // peut ne pas exister). Évite des versements orphelins sans projet.
+  await supabaseAdmin.from('project_transactions').delete().eq('project_id', id)
+
   const { error } = await supabaseAdmin.from('client_projects').delete().eq('id', id)
   if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 })
   return NextResponse.json({ success: true })

@@ -5,7 +5,7 @@ import {
   Plus, RefreshCw, X, Save, Loader2, AlertCircle,
   FolderOpen, Trash2, Edit2, Eye, Paperclip, Link2, DollarSign, Printer,
   FileText, Receipt, Search, CheckCircle, Bot, Settings2, FileJson, Download,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, Archive, ArchiveRestore
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { kobaSupabase } from '@/lib/supabase-koba'
@@ -31,6 +31,7 @@ interface ClientProject {
   id: string; custom_id: string; client_id: string; client_code: string
   client_name: string; type: string; designation: string
   invoice_id: string | null; date: string; status: string
+  archived?: boolean
   created_at?: string; total?: number; linked_invoices?: LinkedInvoice[]
   koba_account_id?: string | null
   koba_account_name?: string | null
@@ -287,11 +288,12 @@ export default function ClientProjectsPage() {
   const [viewing,        setViewing]        = useState<ClientProject | null>(null)
   const [paymentProject, setPaymentProject] = useState<ClientProject | null>(null)
   const [docProject,     setDocProject]     = useState<ClientProject | null>(null)
+  const [showArchived,   setShowArchived]   = useState(false)
 
   const fetchProjects = useCallback(async () => {
     setLoading(true); setError('')
     try {
-      const r = await fetch('/api/admin/client-projects')
+      const r = await fetch('/api/admin/client-projects?archived=all')
       const j = await r.json()
       if (j.tableNotFound) { setTableNotFound(true); setProjects([]) }
       else if (j.success) setProjects(j.data ?? [])
@@ -329,13 +331,26 @@ export default function ClientProjectsPage() {
   function versedTotal(pid: string) { return projTx(pid).reduce((s, t) => s + (t.amount ?? 0), 0) }
   function remaining(p: ClientProject) { return (p.total ?? 0) - versedTotal(p.id) }
 
+  // Vue archives : n'affiche que les archivés ; vue normale : masque les archivés
+  const byArchive = projects.filter((p) => showArchived ? !!p.archived : !p.archived)
+
   const filtered = search
-    ? projects.filter((p) => p.designation.toLowerCase().includes(search) || p.client_name.toLowerCase().includes(search) || p.custom_id.toLowerCase().includes(search))
-    : projects
+    ? byArchive.filter((p) => p.designation.toLowerCase().includes(search) || p.client_name.toLowerCase().includes(search) || p.custom_id.toLowerCase().includes(search))
+    : byArchive
 
   const filteredByClient = clientFilter === 'Tout'
     ? filtered
     : filtered.filter(p => p.client_id === clientFilter)
+
+  const archivedCount = projects.filter((p) => p.archived).length
+
+  const toggleArchive = async (p: ClientProject) => {
+    await fetch(`/api/admin/client-projects/${p.id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ archived: !p.archived }),
+    })
+    fetchProjects()
+  }
 
   const selectedClientObjFilter = clientFilter !== 'Tout' ? clients.find(c => c.id === clientFilter) : null;
   const displayFilterValue = selectedClientObjFilter ? (selectedClientObjFilter.name || selectedClientObjFilter.email) : 'Tout';
@@ -350,10 +365,11 @@ export default function ClientProjectsPage() {
     fetchProjects()
   }
 
-  const totalProjects  = projects.length
-  const activeProjects = projects.filter((p) => p.status === 'actif').length
+  const nonArchived    = projects.filter((p) => !p.archived)
+  const totalProjects  = nonArchived.length
+  const activeProjects = nonArchived.filter((p) => p.status === 'actif').length
   const typesCount     = new Map<string, number>()
-  projects.forEach((p) => typesCount.set(p.type, (typesCount.get(p.type) ?? 0) + 1))
+  nonArchived.forEach((p) => typesCount.set(p.type, (typesCount.get(p.type) ?? 0) + 1))
 
   if (loading) return <div className="flex items-center justify-center h-64"><Loader2 size={32} className="animate-spin text-muted-foreground" /></div>
   if (error)   return <div className="flex flex-col items-center justify-center h-64 gap-3 text-destructive"><AlertCircle size={32} /><p>{error}</p><Button variant="outline" onClick={fetchProjects}>Réessayer</Button></div>
@@ -465,6 +481,9 @@ export default function ClientProjectsPage() {
             <Button variant="outline" onClick={() => { fetchProjects(); fetchTransactions() }} className="gap-2 h-10">
               <RefreshCw size={14} /> Actualiser
             </Button>
+            <Button variant={showArchived ? 'default' : 'outline'} onClick={() => setShowArchived(v => !v)} className="gap-2 h-10">
+              <FolderOpen size={14} /> {showArchived ? 'Voir les actifs' : `Archives${archivedCount ? ` (${archivedCount})` : ''}`}
+            </Button>
             <Button onClick={() => { setEditing(null); setModalOpen(true) }} className="gap-2 h-10">
               <Plus size={16} /> Nouveau projet
             </Button>
@@ -571,6 +590,12 @@ export default function ClientProjectsPage() {
                           </Button>
                           <Button size="icon" variant="ghost" className="h-7 w-7" title="Modifier" aria-label="Modifier le projet" onClick={() => { setEditing(p); setModalOpen(true) }}>
                             <Edit2 size={14} />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-amber-400 hover:text-amber-300"
+                            title={p.archived ? 'Désarchiver' : 'Archiver'}
+                            aria-label={p.archived ? 'Désarchiver le projet' : 'Archiver le projet'}
+                            onClick={() => toggleArchive(p)}>
+                            {p.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
                           </Button>
                           <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" title="Supprimer" aria-label="Supprimer le projet" onClick={() => deleteProject(p.id)}>
                             <Trash2 size={14} />
