@@ -172,9 +172,16 @@ export const API_MANIFEST: ApiEndpoint[] = [
     method: 'PUT',
     path: '/api/admin/invoices/{id}',
     title: 'Modifier une facture',
-    description: "Met à jour n'importe quel champ (ex : marquer payée).",
+    description:
+      "Met à jour n'importe quel champ (ex : marquer payée, corriger l'objet). " +
+      "Si le body contient 'items', les articles sont remplacés et les totaux " +
+      'HT/TVA/TTC sont recalculés automatiquement (TVA = tva_rate fourni ou existant).',
     tag: 'Factures',
-    bodyExample: { status: 'payé', notes: 'Paiement reçu le 15/05/2026.' },
+    bodyExample: {
+      objet: 'Permis de construire — Bâtiment R+2',
+      items: [{ desc: 'Étude architecturale', qty: 1, price: 350000 }],
+      tva_rate: '0 %',
+    },
     aiUsable: true,
   },
   {
