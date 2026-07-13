@@ -121,6 +121,27 @@ export const API_MANIFEST: ApiEndpoint[] = [
     aiUsable: true,
   },
   {
+    method: 'POST',
+    path: '/api/admin/agent/reassign-project',
+    title: 'Réaffecter un projet à un autre client',
+    description:
+      "Change le client d'un projet existant (client RÉUTILISÉ s'il existe, sinon CRÉÉ) " +
+      'et met à jour la facture liée au nouveau nom. La référence du projet (custom_id) ' +
+      'reste STABLE pour ne pas casser les versements/reçus. Fournir project_id ou project_custom_id.',
+    tag: 'Agent IA',
+    bodyExample: {
+      project_custom_id: 'P-26-CL-26-01-06',
+      client: { full_name: 'OUEDRAOGO Alassane', phone: '+226 70 00 00 00' },
+    },
+    responseExample: {
+      success: true,
+      project: { custom_id: 'P-26-CL-26-01-06', designation: 'Permis R+1' },
+      client: { code: 'CL-26-12', name: 'OUEDRAOGO Alassane', reused: false },
+      invoice_updated: true,
+    },
+    aiUsable: true,
+  },
+  {
     method: 'GET',
     path: '/api/admin/agent/manifest',
     title: 'Découvrir toutes les capacités (ce manifeste)',
