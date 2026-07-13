@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Settings, Eye, EyeOff, Save, Key, Cpu } from 'lucide-react'
+import BrandingSettings from '@/components/admin/BrandingSettings'
 
 export default function SettingsPage() {
   const [deepseekKey, setDeepseekKey] = useState('')
@@ -28,13 +29,15 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-2xl mx-auto">
+    <div className="space-y-6 max-w-3xl mx-auto">
       <div>
         <h3 className="text-xl font-bold tracking-tight">Paramètres de l'application</h3>
         <p className="text-sm text-muted-foreground">
-          Gérez vos clés API et les configurations des modèles d'intelligence artificielle.
+          Gérez vos clés API, les modèles d'IA et le branding de vos documents.
         </p>
       </div>
+
+      <BrandingSettings />
 
       <Card className="border shadow-sm">
         <CardContent className="p-6 space-y-6">

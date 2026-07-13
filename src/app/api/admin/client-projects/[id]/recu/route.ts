@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { generateDocNumber } from '@/lib/id-generators'
 import { htmlToPdf, numToWordsFr } from '@/lib/html-to-pdf'
+import { getInvoiceBranding, brandingAssetUrls, svgIcon, renderFooterBand } from '@/lib/branding'
 
 /**
  * GET /api/admin/client-projects/{id}/recu
@@ -114,10 +115,13 @@ export async function GET(
 
     // ── 4. HTML du reçu ──────────────────────────────────────────────────────
     const base = request.nextUrl.origin
+    const b = await getInvoiceBranding()
+    const assets = brandingAssetUrls(b, base)
+    const gold = b.accent_color
     const [logo64, sig64, stamp64] = await Promise.all([
-      toBase64Server(`${base}/ngnior-logo.png`),
-      toBase64Server(`${base}/signature.png`),
-      toBase64Server(`${base}/tampon.png`),
+      toBase64Server(assets.logo),
+      toBase64Server(assets.signature),
+      toBase64Server(assets.stamp),
     ])
 
     const dateStr = new Date().toLocaleDateString('fr-FR')
@@ -135,48 +139,51 @@ export async function GET(
 <style>
   @page { size: A4 portrait; margin: 0 }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#111;background:#fff;width:210mm;min-height:297mm;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#1a1a1a;background:#fff;width:210mm;min-height:297mm;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
   .page{width:210mm;min-height:297mm;padding:0;display:flex;flex-direction:column}
-  .header{display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:2px solid #000}
-  .header-logo img{height:64px;object-fit:contain}
+  .header{display:flex;align-items:center;justify-content:space-between;padding:18px 26px;border-bottom:2px solid ${gold}}
+  .header-logo img{height:62px;object-fit:contain}
   .header-company{text-align:right}
-  .header-company h2{font-size:15px;font-weight:900;color:#0055aa;margin-bottom:2px}
-  .header-company p{font-size:9px;color:#555}
-  .title-bar{text-align:center;padding:14px;background:#f5f5f5;border-bottom:1px solid #ddd}
-  .title-bar h1{font-size:18px;font-weight:900;letter-spacing:1px;text-transform:uppercase}
-  .meta{display:flex;justify-content:space-between;padding:10px 24px;border-bottom:1px solid #eee;font-size:10px}
-  .meta span{color:#555}.meta strong{color:#000}
-  .client-box{margin:12px 24px;border:1px solid #ddd;border-radius:4px;padding:10px 14px;font-size:10px;background:#fafafa}
-  .client-box p{margin-bottom:3px}.client-box span.lbl{color:#0055aa;font-weight:bold;margin-right:6px}
-  .project-box{margin:0 24px 10px;border:1px solid #0055aa30;border-radius:4px;padding:10px 14px;font-size:10px;background:#f0f5ff}
-  .project-box p{margin-bottom:3px;color:#0044aa}
-  table.tx{width:calc(100% - 48px);margin:0 24px;border-collapse:collapse}
-  table.tx thead tr{background:#000;color:#fff}
-  table.tx thead th{padding:7px 10px;font-size:10px;text-align:left;letter-spacing:.5px}
+  .header-company h2{font-size:16px;font-weight:900}
+  .header-company p{font-size:9.5px;color:${gold}}
+  .header-company .dt{color:#555;margin-top:2px}
+  .title-bar{text-align:center;padding:16px}
+  .title-bar h1{font-size:20px;font-weight:900;letter-spacing:2px;text-transform:uppercase;display:inline-flex;align-items:center;gap:14px}
+  .title-bar h1::before,.title-bar h1::after{content:"";width:38px;height:3px;background:${gold};border-radius:2px}
+  .meta{display:flex;justify-content:space-between;padding:2px 26px 12px;font-size:11px}
+  .meta strong{color:#000}
+  .info-box{margin:0 26px;border:1px solid #e4ddcd;border-radius:10px;padding:12px 16px}
+  .info-box .row{display:flex;align-items:center;gap:10px;font-size:11px;padding:3px 0}
+  .info-box .ic{width:26px;height:26px;border-radius:50%;border:1.5px solid ${gold};color:${gold};display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .info-box .lbl{font-weight:bold;margin-right:4px}
+  .project-box{margin:12px 26px;display:flex;gap:10px;align-items:flex-start;border:1px solid #efe7d5;border-radius:10px;padding:12px 16px;font-size:10.5px;background:#faf8f2}
+  .project-box .ic{width:28px;height:28px;border-radius:8px;background:${gold};color:#111;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  table.tx{width:calc(100% - 52px);margin:6px 26px;border-collapse:collapse}
+  table.tx thead tr{background:#111;color:#fff}
+  table.tx thead th{padding:8px 12px;font-size:10px;text-align:left;letter-spacing:.5px;text-transform:uppercase}
   table.tx thead th:last-child{text-align:right}
-  table.tx tbody td{padding:7px 10px;border-bottom:1px solid #eee;font-size:10px}
+  table.tx tbody td{padding:8px 12px;border-bottom:1px solid #eee;font-size:10.5px}
   table.tx tbody td:last-child{text-align:right;font-weight:bold}
-  .totals{margin:8px 24px 0;border-top:2px solid #000}
-  .totals table{width:220px;margin-left:auto}
-  .totals td{padding:5px 8px;font-size:11px}
+  .totals{margin:8px 26px 0}
+  .totals table{width:260px;margin-left:auto;border-collapse:collapse}
+  .totals td{padding:7px 10px;font-size:11px}
   .totals td:last-child{text-align:right}
-  .totals .total-row td{font-weight:bold;background:#e8f4e8;color:#006600}
-  .totals .rest-row td{font-weight:bold;background:#fde8e8;color:#cc0000;font-size:12px}
-  .arrete{margin:10px 24px;font-style:italic;font-size:10px;color:#333;border-top:1px dashed #ccc;padding-top:8px}
-  .sign-area{display:flex;justify-content:flex-end;align-items:flex-end;padding:16px 40px 8px;margin-top:10px}
-  .sign-block{text-align:center;min-width:120px}
-  .sign-block .line{border-top:1px solid #333;margin-bottom:4px;margin-top:60px}
-  .sign-block img{height:72px;object-fit:contain;display:block;margin:0 auto}
+  .totals .total-row td{font-weight:bold;background:#e8f4e8;color:#0a7a2f}
+  .totals .rest-row td{font-weight:bold;background:#fdecec;color:#c62828;font-size:12px}
+  .arrete{margin:12px 26px;font-style:italic;font-size:10px;color:#333;border-top:1px dashed #ccc;padding-top:8px}
+  .sign-area{display:flex;justify-content:flex-end;align-items:flex-end;padding:16px 44px 10px;margin-top:6px}
+  .sign-block{text-align:center;min-width:150px}
+  .sign-block .line{border-top:1px solid #333;margin-bottom:4px;margin-top:64px}
+  .sign-block img{height:74px;object-fit:contain;display:block;margin:0 auto}
   .sign-block p{font-size:10px;font-weight:bold}
-  .footer{margin-top:30px;background:#fff;color:#000;padding:10px 20px 20px;font-size:11px;border-top:3px solid #000;line-height:1.6;}
 </style></head><body>
 <div class="page">
   <div class="header">
-    <div class="header-logo">${logo64 ? `<img src="${logo64}" alt="NGnior">` : '<span style="font-size:18px;font-weight:900">NGnior</span>'}</div>
+    <div class="header-logo">${logo64 ? `<img src="${logo64}" alt="${b.company_name}">` : `<span style="font-size:18px;font-weight:900">${b.company_name}</span>`}</div>
     <div class="header-company">
-      <h2>NGnior Conception</h2>
-      <p>Service : Conception - Etude - Suivi contrôle – construction</p>
-      <p>Date: ${dateStr}</p>
+      <h2>${b.company_name}</h2>
+      <p>${b.service_line}</p>
+      <p class="dt">Date : ${dateStr}</p>
     </div>
   </div>
 
@@ -187,18 +194,21 @@ export async function GET(
     <span>Projet Réf. : <strong>${project.custom_id}</strong></span>
   </div>
 
-  <div class="client-box">
-    <p><span class="lbl">Entreprise :</span>NGnior Conception</p>
-    <p><span class="lbl">Client Réf. :</span>${project.client_code}</p>
-    <p><span class="lbl">Doit :</span>${project.client_name}</p>
+  <div class="info-box">
+    <div class="row"><span class="ic">${svgIcon('building', 14, gold)}</span><span><span class="lbl">Entreprise :</span>${b.company_name}</span></div>
+    <div class="row"><span class="ic">${svgIcon('user', 14, gold)}</span><span><span class="lbl">Client Réf. :</span>${project.client_code}</span></div>
+    <div class="row"><span class="ic">${svgIcon('user', 14, gold)}</span><span><span class="lbl">Doit :</span>${project.client_name}</span></div>
   </div>
 
   <div class="project-box">
-    <p><strong>Projet Associé :</strong> ${project.designation} (${project.type})</p>
-    ${projectTotal ? `<p><strong>Coût total du projet :</strong> ${projectTotal.toLocaleString('fr-FR')} Fcfa</p>` : ''}
+    <span class="ic">${svgIcon('folder', 15, '#111')}</span>
+    <div>
+      <p><strong>Projet Associé :</strong> ${project.designation} (${project.type})</p>
+      ${projectTotal ? `<p><strong>Coût total du projet :</strong> ${projectTotal.toLocaleString('fr-FR')} Fcfa</p>` : ''}
+    </div>
   </div>
 
-  <p style="padding:8px 24px 4px;font-size:10px;font-weight:bold;">Détail des paiements reçus pour ce projet :</p>
+  <p style="padding:6px 26px 4px;font-size:10.5px;font-weight:bold;">Détail des paiements reçus pour ce projet :</p>
 
   <table class="tx">
     <thead><tr>
@@ -220,7 +230,7 @@ export async function GET(
     <div style="display:flex; align-items:flex-end;">
       <div class="sign-block" style="position: relative; z-index: 2; margin-right: -40px;">
         <div class="line"></div>
-        <p>Le Gérant</p>
+        <p>${b.signatory_label_recu}</p>
         ${sig64 ? `<img src="${sig64}" alt="Signature" style="margin-top:-50px;position:relative;z-index:2">` : ''}
       </div>
       <div class="sign-block" style="position: relative; z-index: 1;">
@@ -229,10 +239,7 @@ export async function GET(
     </div>
   </div>
 
-  <div class="footer">
-    <div style="word-spacing: 6px;">Société à Responsabilité Limité &nbsp;&nbsp;&nbsp;&nbsp; ngniorconceptions@gmail.com &nbsp; www.ngniorconception.com</div>
-    <div>RCCM : BFOUA2019B1915 IF : 00117306P |+226 56 88 65 05 | +226 71 35 33 75 |</div>
-  </div>
+  ${renderFooterBand(b)}
 </div>
 </body></html>`
 
