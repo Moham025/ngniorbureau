@@ -95,6 +95,33 @@ export const API_MANIFEST: ApiEndpoint[] = [
   },
   {
     method: 'GET',
+    path: '/api/admin/agent/invoice',
+    title: "Lire un document AVEC ses articles",
+    description:
+      "Détail complet d'une facture/devis/reçu/proforma, Y COMPRIS la liste des articles " +
+      '(désignation, quantité, prix, montant) et les totaux HT/TVA/TTC. ' +
+      "Contrairement à /agent/list qui est un listing léger sans articles. " +
+      'Fournir ?number=FPR-26-... (insensible à la casse) ou ?id=UUID.',
+    tag: 'Agent IA',
+    queryParams: [
+      { name: 'number', description: 'Numéro du document (ex: FPR-26-...)' },
+      { name: 'id', description: 'UUID du document' },
+    ],
+    responseExample: {
+      success: true,
+      invoice: {
+        number: 'FPR-26-CL-26-01-06-04', type: 'Facture Proforma', total: 1550000,
+        client_name: 'Mahama KOUANDA',
+        items: [
+          { desc: 'Plan Architectural', qty: 1, price: 500000, montant: 500000 },
+          { desc: 'Étude Ingénierie', qty: 1, price: 500000, montant: 500000 },
+        ],
+      },
+    },
+    aiUsable: true,
+  },
+  {
+    method: 'GET',
     path: '/api/admin/agent/manifest',
     title: 'Découvrir toutes les capacités (ce manifeste)',
     description:
