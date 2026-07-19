@@ -5,7 +5,7 @@ import {
   Plus, RefreshCw, X, Save, Loader2, AlertCircle,
   FolderOpen, Trash2, Edit2, Eye, Paperclip, Link2, DollarSign, Printer,
   FileText, Receipt, Search, CheckCircle, Bot, Settings2, FileJson, Download,
-  ChevronLeft, ChevronRight, Archive, ArchiveRestore
+  ChevronLeft, ChevronRight, ChevronDown, Archive, ArchiveRestore
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { kobaSupabase } from '@/lib/supabase-koba'
@@ -112,11 +112,28 @@ export default function ClientProjectsPage() {
     koba: false,
   })
 
+  const [colWidths, setColWidths] = useState<Record<string, number>>({
+    id: 120,
+    client: 180,
+    type: 140,
+    designation: 220,
+    cost: 110,
+    versed: 110,
+    remaining: 110,
+    date: 100,
+    status: 90,
+    koba: 160,
+  })
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('client-projects-collapsed')
-      if (saved) {
-        try { setCollapsedColumns(JSON.parse(saved)) } catch { /* ignore */ }
+      const savedCollapsed = localStorage.getItem('client-projects-collapsed')
+      if (savedCollapsed) {
+        try { setCollapsedColumns(JSON.parse(savedCollapsed)) } catch { /* ignore */ }
+      }
+      const savedWidths = localStorage.getItem('client-projects-widths')
+      if (savedWidths) {
+        try { setColWidths(JSON.parse(savedWidths)) } catch { /* ignore */ }
       }
     }
   }, [])
@@ -124,6 +141,34 @@ export default function ClientProjectsPage() {
   useEffect(() => {
     localStorage.setItem('client-projects-collapsed', JSON.stringify(collapsedColumns))
   }, [collapsedColumns])
+
+  useEffect(() => {
+    localStorage.setItem('client-projects-widths', JSON.stringify(colWidths))
+  }, [colWidths])
+
+  const startResize = (colKey: string, e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const startX = e.pageX
+    const startWidth = colWidths[colKey] || 150
+
+    const doDrag = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.pageX - startX
+      const newWidth = Math.max(60, startWidth + deltaX)
+      setColWidths(prev => ({
+        ...prev,
+        [colKey]: newWidth
+      }))
+    }
+
+    const stopDrag = () => {
+      document.removeEventListener('mousemove', doDrag)
+      document.removeEventListener('mouseup', stopDrag)
+    }
+
+    document.addEventListener('mousemove', doDrag)
+    document.addEventListener('mouseup', stopDrag)
+  }
 
   const renderCollapsibleHeader = (colKey: string, label: string, isRightAligned = false, isCentered = false) => {
     const isCollapsed = collapsedColumns[colKey]
@@ -134,23 +179,35 @@ export default function ClientProjectsPage() {
 
     if (isCollapsed) {
       return (
-        <TableHead className="px-1 py-2 text-center w-10 min-w-[40px] max-w-[40px] transition-all duration-300">
+        <TableHead 
+          style={{ width: '40px', minWidth: '40px', maxWidth: '40px' }}
+          className="px-1 py-2 text-center transition-all duration-300 relative select-none"
+        >
           <button 
             onClick={toggle}
             type="button"
             title={`Dérouler la colonne ${label}`}
             className="mx-auto flex items-center justify-center p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
           >
-            <ChevronRight size={14} />
+            <ChevronDown size={14} />
           </button>
         </TableHead>
       )
     }
 
+    const currentWidth = colWidths[colKey] || 150
+
     return (
-      <TableHead className={`px-4 py-3 text-xs uppercase whitespace-nowrap transition-all duration-300 ${isRightAligned ? 'text-right' : isCentered ? 'text-center' : ''}`}>
+      <TableHead 
+        style={{ 
+          width: `${currentWidth}px`, 
+          minWidth: `${currentWidth}px`, 
+          maxWidth: `${currentWidth}px` 
+        }}
+        className={`px-4 py-3 text-xs uppercase whitespace-nowrap transition-all duration-300 relative group select-none ${isRightAligned ? 'text-right' : isCentered ? 'text-center' : ''}`}
+      >
         <div className={`flex items-center gap-1.5 ${isRightAligned ? 'justify-end' : isCentered ? 'justify-center' : 'justify-between'}`}>
-          <span>{label}</span>
+          <span className="truncate">{label}</span>
           <button 
             onClick={toggle}
             type="button"
@@ -160,6 +217,12 @@ export default function ClientProjectsPage() {
             <ChevronLeft size={14} />
           </button>
         </div>
+        {/* Resize Handle */}
+        <div
+          onMouseDown={(e) => startResize(colKey, e)}
+          className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/50 bg-transparent transition-colors z-20"
+          style={{ touchAction: 'none' }}
+        />
       </TableHead>
     )
   }
@@ -168,11 +231,22 @@ export default function ClientProjectsPage() {
     const isCollapsed = collapsedColumns[colKey]
     if (isCollapsed) {
       return (
-        <TableCell className="px-1 py-3 text-center w-10 min-w-[40px] max-w-[40px] transition-all duration-300 bg-muted/10" />
+        <TableCell 
+          style={{ width: '40px', minWidth: '40px', maxWidth: '40px' }}
+          className="px-1 py-3 text-center transition-all duration-300 bg-muted/10"
+        />
       )
     }
+    const currentWidth = colWidths[colKey] || 150
     return (
-      <TableCell className={`px-4 py-3 transition-all duration-300 ${className} ${isRightAligned ? 'text-right' : ''}`}>
+      <TableCell 
+        style={{ 
+          width: `${currentWidth}px`, 
+          minWidth: `${currentWidth}px`, 
+          maxWidth: `${currentWidth}px` 
+        }}
+        className={`px-4 py-3 transition-all duration-300 truncate ${className} ${isRightAligned ? 'text-right' : ''}`}
+      >
         {content}
       </TableCell>
     )
@@ -507,20 +581,8 @@ export default function ClientProjectsPage() {
         <CardContent className="p-0 overflow-x-auto">
           <Table 
             style={{ 
-              minWidth: (() => {
-                let width = 150 // actions
-                width += collapsedColumns.id ? 40 : 120
-                width += collapsedColumns.client ? 40 : 180
-                width += collapsedColumns.type ? 40 : 180
-                width += collapsedColumns.designation ? 40 : 220
-                width += collapsedColumns.cost ? 40 : 110
-                width += collapsedColumns.versed ? 40 : 110
-                width += collapsedColumns.remaining ? 40 : 110
-                width += collapsedColumns.date ? 40 : 100
-                width += collapsedColumns.status ? 40 : 90
-                width += collapsedColumns.koba ? 40 : 160
-                return `${width}px`
-              })() 
+              tableLayout: 'fixed',
+              width: '100%',
             }} 
             className="w-full"
           >
@@ -536,7 +598,7 @@ export default function ClientProjectsPage() {
                 {renderCollapsibleHeader('date', 'Date')}
                 {renderCollapsibleHeader('status', 'Statut', false, true)}
                 {renderCollapsibleHeader('koba', 'Versement (KOBA)')}
-                <TableHead className="px-4 py-3 text-xs uppercase whitespace-nowrap">Actions</TableHead>
+                <TableHead style={{ width: '150px' }} className="px-4 py-3 text-xs uppercase whitespace-nowrap">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -547,36 +609,42 @@ export default function ClientProjectsPage() {
                   const rest   = (p.total ?? 0) - versed
                   return (
                     <TableRow key={p.id} className="hover:bg-muted/30">
-                      {renderCollapsibleCell('id', p.custom_id, false, "font-mono text-xs font-semibold whitespace-nowrap")}
+                      {renderCollapsibleCell('id', p.custom_id, false, "font-mono text-xs font-semibold truncate")}
                       {renderCollapsibleCell('client', (
-                        <>
-                          <p className="font-semibold text-sm">{p.client_name || '—'}</p>
-                          <p className="text-xs text-muted-foreground">{p.client_code}</p>
-                        </>
+                        <div className="w-full min-w-0 flex flex-col truncate">
+                          <p className="font-semibold text-sm truncate" title={p.client_name || ''}>{p.client_name || '—'}</p>
+                          <p className="text-xs text-muted-foreground truncate" title={p.client_code || ''}>{p.client_code}</p>
+                        </div>
                       ))}
                       {renderCollapsibleCell('type', (
-                        <span className={`text-xs font-medium px-2 py-1 rounded-full ${TYPE_COLORS[p.type] ?? TYPE_COLORS['Autre']}`}>{p.type}</span>
+                        <span className={`text-xs font-medium px-2 py-1 rounded-full truncate inline-block max-w-full ${TYPE_COLORS[p.type] ?? TYPE_COLORS['Autre']}`} title={p.type || ''}>
+                          {p.type}
+                        </span>
                       ))}
-                      {renderCollapsibleCell('designation', p.designation, false, "text-sm max-w-xs truncate")}
-                      {renderCollapsibleCell('cost', p.total ? fmt(p.total) : '—', true, "text-sm font-semibold")}
-                      {renderCollapsibleCell('versed', versed > 0 ? fmt(versed) : '—', true, "text-sm text-blue-400 font-semibold")}
+                      {renderCollapsibleCell('designation', (
+                        <span className="text-sm truncate block" title={p.designation || ''}>
+                          {p.designation || '—'}
+                        </span>
+                      ))}
+                      {renderCollapsibleCell('cost', p.total ? fmt(p.total) : '—', true, "text-sm font-semibold truncate")}
+                      {renderCollapsibleCell('versed', versed > 0 ? fmt(versed) : '—', true, "text-sm text-blue-400 font-semibold truncate")}
                       {renderCollapsibleCell('remaining', (
-                        <span className={rest > 0 ? 'text-red-400' : rest === 0 && versed > 0 ? 'text-emerald-400' : 'text-muted-foreground'}>
+                        <span className={`truncate ${rest > 0 ? 'text-red-400' : rest === 0 && versed > 0 ? 'text-emerald-400' : 'text-muted-foreground'}`}>
                           {p.total ? fmt(rest) : '—'}
                         </span>
-                      ), true, "text-sm font-bold")}
-                      {renderCollapsibleCell('date', p.date ? new Date(p.date).toLocaleDateString('fr-FR') : '—', false, "text-sm text-muted-foreground")}
+                      ), true, "text-sm font-bold truncate")}
+                      {renderCollapsibleCell('date', p.date ? new Date(p.date).toLocaleDateString('fr-FR') : '—', false, "text-sm text-muted-foreground truncate")}
                       {renderCollapsibleCell('status', (
-                        <Badge variant={p.status === 'actif' ? 'default' : 'secondary'} className="text-xs">
+                        <Badge variant={p.status === 'actif' ? 'default' : 'secondary'} className="text-xs truncate">
                           {p.status === 'actif' ? 'Actif' : p.status}
                         </Badge>
-                      ), false, "text-center")}
+                      ), false, "text-center truncate")}
                       {renderCollapsibleCell('koba', (
                         kobaUser ? (
                           <select
                             value={p.koba_account_id || ''}
                             onChange={(e) => handleKobaAccountChange(p, e.target.value)}
-                            className="text-xs bg-background/50 border rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary max-w-[150px]"
+                            className="text-xs bg-background/50 border rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary w-full max-w-full truncate"
                           >
                             <option value="">Compte NGnior</option>
                             {kobaAccounts.map((acc) => (
@@ -586,7 +654,7 @@ export default function ClientProjectsPage() {
                             ))}
                           </select>
                         ) : (
-                          <span className="text-xs text-muted-foreground italic">Non connecté à KOBA</span>
+                          <span className="text-xs text-muted-foreground italic truncate">Non connecté à KOBA</span>
                         )
                       ))}
                       <TableCell className="px-4 py-3">
